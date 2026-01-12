@@ -41,6 +41,8 @@
     "subtitle": "Sign in to your account",
     "username": "Username",
     "password": "Password",
+    "defaultUsername": "Default: admin",
+    "defaultPassword": "Default: admin123",
     "signIn": "Sign In",
     "signingIn": "Signing in...",
     "failed": "Login failed"

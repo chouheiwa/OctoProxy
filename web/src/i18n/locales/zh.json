@@ -41,6 +41,8 @@
     "subtitle": "登录您的账户",
     "username": "用户名",
     "password": "密码",
+    "defaultUsername": "默认账户: admin",
+    "defaultPassword": "默认密码: admin123",
     "signIn": "登录",
     "signingIn": "登录中...",
     "failed": "登录失败"

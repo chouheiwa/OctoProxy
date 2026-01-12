@@ -5,8 +5,7 @@ on:
     branches:
       - main
       - master
-    tags:
-      - 'v*'
+    # tag 推送由 release.yml 处理
   pull_request:
     branches:
       - main

@@ -87,7 +87,7 @@ export default function Integration() {
       } else {
         setElectronKey(null);
       }
-    } catch (error) {
+    } catch {
       // 非 Electron 环境会返回 404，静默处理
       setElectronKey(null);
     } finally {

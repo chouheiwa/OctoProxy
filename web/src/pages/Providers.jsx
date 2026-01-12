@@ -59,6 +59,7 @@ export default function Providers() {
 
   useEffect(() => {
     loadProviders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function Providers() {
       interval = setInterval(pollOAuthStatus, 3000);
     }
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oauthSessionId, progressModalOpen]);
 
   const loadProviders = async () => {

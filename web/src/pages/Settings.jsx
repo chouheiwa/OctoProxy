@@ -10,11 +10,9 @@ import {
   Alert,
   Spin,
   Divider,
-  Space,
   message,
   Descriptions,
   Switch,
-  Progress,
 } from "antd";
 import {
   SettingOutlined,
@@ -52,6 +50,7 @@ export default function Settings() {
     if (isElectron()) {
       loadElectronSettings();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadConfig = async () => {

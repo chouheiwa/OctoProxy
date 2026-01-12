@@ -39,6 +39,7 @@ export default function Usage() {
 
   useEffect(() => {
     loadUsage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadUsage = async () => {

@@ -21,16 +21,9 @@ import {
 
 const { Title, Text, Paragraph } = Typography;
 
-export default function Integration() {
-  const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState("claude-code");
-
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    message.success(t("common.copied"));
-  };
-
-  const CodeBlock = ({ code, language = "bash" }) => (
+// CodeBlock component defined outside to avoid recreating on each render
+function CodeBlock({ code, onCopy }) {
+  return (
     <div style={{ position: "relative" }}>
       <pre
         style={{
@@ -54,7 +47,7 @@ export default function Integration() {
       <Button
         type="text"
         icon={<CopyOutlined />}
-        onClick={() => copyToClipboard(code)}
+        onClick={() => onCopy(code)}
         style={{
           position: "absolute",
           top: 8,
@@ -64,6 +57,16 @@ export default function Integration() {
       />
     </div>
   );
+}
+
+export default function Integration() {
+  const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState("claude-code");
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    message.success(t("common.copied"));
+  };
 
   const baseUrl = window.location.origin;
 
@@ -84,6 +87,7 @@ export default function Integration() {
     "ANTHROPIC_MODEL": "claude-sonnet-4-20250514"
   }
 }`}
+          onCopy={copyToClipboard}
         />
       </Card>
 
@@ -106,6 +110,7 @@ export default function Integration() {
     "ANTHROPIC_REASONING_MODEL": "claude-opus-4-5"
   }
 }`}
+          onCopy={copyToClipboard}
         />
       </Card>
 
@@ -126,6 +131,7 @@ export default function Integration() {
                   <Paragraph>{t("integration.claudeCode.step1Desc")}</Paragraph>
                   <CodeBlock
                     code={`claude config set --global apiUrl ${baseUrl}`}
+                    onCopy={copyToClipboard}
                   />
                 </Card>
                 <Card
@@ -135,6 +141,7 @@ export default function Integration() {
                   <Paragraph>{t("integration.claudeCode.step2Desc")}</Paragraph>
                   <CodeBlock
                     code={`claude config set --global apiKey your-api-key`}
+                    onCopy={copyToClipboard}
                   />
                 </Card>
               </Space>
@@ -149,6 +156,7 @@ export default function Integration() {
                 <CodeBlock
                   code={`export ANTHROPIC_BASE_URL="${baseUrl}"
 export ANTHROPIC_AUTH_TOKEN="your-api-key"`}
+                  onCopy={copyToClipboard}
                 />
               </Space>
             ),
@@ -187,6 +195,7 @@ export ANTHROPIC_AUTH_TOKEN="your-api-key"`}
     ],
     "stream": true
   }'`}
+          onCopy={copyToClipboard}
         />
       </Card>
 
@@ -210,6 +219,7 @@ response = client.chat.completions.create(
 for chunk in response:
     if chunk.choices[0].delta.content:
         print(chunk.choices[0].delta.content, end="")`}
+          onCopy={copyToClipboard}
         />
       </Card>
 
@@ -231,6 +241,7 @@ const stream = await client.chat.completions.create({
 for await (const chunk of stream) {
   process.stdout.write(chunk.choices[0]?.delta?.content || '');
 }`}
+          onCopy={copyToClipboard}
         />
       </Card>
     </Space>
@@ -263,6 +274,7 @@ for await (const chunk of stream) {
     ],
     "stream": true
   }'`}
+          onCopy={copyToClipboard}
         />
       </Card>
 
@@ -284,6 +296,7 @@ with client.messages.stream(
 ) as stream:
     for text in stream.text_stream:
         print(text, end="")`}
+          onCopy={copyToClipboard}
         />
       </Card>
 
@@ -308,6 +321,7 @@ for await (const event of stream) {
     process.stdout.write(event.delta.text);
   }
 }`}
+          onCopy={copyToClipboard}
         />
       </Card>
     </Space>
@@ -327,6 +341,7 @@ for await (const event of stream) {
           <CodeBlock
             code={`Base URL: ${baseUrl}/v1
 API Key: sk-your-api-key`}
+            onCopy={copyToClipboard}
           />
         </Space>
       </Card>
@@ -345,6 +360,7 @@ API Key: sk-your-api-key`}
     }
   ]
 }`}
+          onCopy={copyToClipboard}
         />
       </Card>
 
@@ -355,6 +371,7 @@ API Key: sk-your-api-key`}
 export OPENAI_API_KEY="sk-your-api-key"
 
 aider --model openai/kiro`}
+          onCopy={copyToClipboard}
         />
       </Card>
 
@@ -364,6 +381,7 @@ aider --model openai/kiro`}
           code={`API Endpoint: ${baseUrl}/v1
 API Key: sk-your-api-key
 Model: kiro`}
+          onCopy={copyToClipboard}
         />
       </Card>
     </Space>

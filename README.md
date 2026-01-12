@@ -356,6 +356,24 @@ docker run -d \
 
 ## FAQ
 
+### Q: macOS shows "OctoProxy is damaged and can't be opened"?
+
+This is caused by macOS Gatekeeper. The app is not signed with an Apple Developer certificate.
+
+**Method 1: Use the Fix Script (Recommended)**
+
+Double-click `Fix Gatekeeper.command` in the DMG, it will automatically fix the issue and open the app.
+
+**Method 2: Run Command Manually**
+
+```bash
+xattr -cr /Applications/OctoProxy.app
+```
+
+**Method 3: Right-click to Open**
+
+Right-click the app → Open → Open (first time only).
+
 ### Q: How to reset admin password?
 
 Delete the `configs/config.json` file and restart the service, it will use the default password `admin123`.

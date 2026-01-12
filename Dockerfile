@@ -26,8 +26,8 @@ RUN apk add --no-cache python3 make g++
 # 复制后端依赖文件
 COPY package*.json ./
 
-# 安装后端依赖
-RUN npm ci --only=production
+# 安装后端依赖 (跳过 postinstall 脚本以避免 electron-builder 错误，然后手动重建原生模块)
+RUN npm ci --only=production --ignore-scripts && npm rebuild better-sqlite3
 
 # 阶段3: 生产镜像
 FROM node:20-alpine AS production

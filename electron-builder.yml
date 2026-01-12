@@ -59,7 +59,7 @@ dmg:
     - x: 270
       y: 350
       type: file
-      path: assets/dmg-resources/click-me.command
+      path: assets/dmg-resources/README.txt
   window:
     width: 540
     height: 450

@@ -58,8 +58,8 @@ jobs:
         if: matrix.platform == 'mac'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.MAC_CERTS }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
+          # 如果没有配置签名证书，则跳过代码签名
+          CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run electron:build:mac
 
       - name: Build Electron app (Windows)

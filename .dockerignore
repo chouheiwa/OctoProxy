@@ -1,0 +1,48 @@
+# 依赖目录
+node_modules/
+web/node_modules/
+
+# 构建产物
+web/dist/
+static/
+
+# 数据文件
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# 配置文件 (可选保留)
+configs/
+
+# 日志
+*.log
+logs/
+
+# 开发文件
+.git/
+.gitignore
+.vscode/
+.idea/
+*.md
+!README.md
+
+# 测试
+test/
+tests/
+__tests__/
+coverage/
+
+# 环境文件
+.env
+.env.*
+!.env.example
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Docker 相关
+Dockerfile
+docker-compose*.yml
+.dockerignore

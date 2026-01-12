@@ -130,21 +130,27 @@ export default function ApiKeys() {
     {
       title: t("common.actions"),
       key: "actions",
-      render: (_, record) => (
-        <Space size="small">
-          <Button size="small" onClick={() => handleToggleKey(record)}>
-            {record.is_active ? t("common.disable") : t("common.enable")}
-          </Button>
-          <Popconfirm
-            title={t("apiKeys.deleteConfirm")}
-            onConfirm={() => handleDeleteKey(record.id)}
-            okText={t("common.confirm")}
-            cancelText={t("common.cancel")}
-          >
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_, record) => {
+        // Electron Auto Key 不能被删除，只能禁用
+        const isElectronKey = record.name === "Electron Auto Key";
+        return (
+          <Space size="small">
+            <Button size="small" onClick={() => handleToggleKey(record)}>
+              {record.is_active ? t("common.disable") : t("common.enable")}
+            </Button>
+            {!isElectronKey && (
+              <Popconfirm
+                title={t("apiKeys.deleteConfirm")}
+                onConfirm={() => handleDeleteKey(record.id)}
+                okText={t("common.confirm")}
+                cancelText={t("common.cancel")}
+              >
+                <Button size="small" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 

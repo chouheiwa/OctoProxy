@@ -415,6 +415,15 @@ async function handleDeleteApiKey(req, res, id) {
     return sendError(res, 403, "Access denied");
   }
 
+  // Electron Auto Key 不能被删除，只能禁用
+  if (existing.name === "Electron Auto Key") {
+    return sendError(
+      res,
+      403,
+      "Electron Auto Key cannot be deleted, only disabled",
+    );
+  }
+
   deleteApiKey(id);
   sendSuccess(res, { message: "API Key deleted successfully" });
 }

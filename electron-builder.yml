@@ -22,6 +22,10 @@ extraResources:
     to: migrations
     filter:
       - "**/*"
+  - from: static
+    to: static
+    filter:
+      - "**/*"
 
 asar: true
 compression: maximum

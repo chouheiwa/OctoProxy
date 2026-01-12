@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Typography,
@@ -10,6 +10,9 @@ import {
   message,
   Collapse,
   Tag,
+  Spin,
+  Tooltip,
+  Modal,
 } from "antd";
 import {
   CopyOutlined,
@@ -17,7 +20,11 @@ import {
   ApiOutlined,
   RocketOutlined,
   CheckCircleOutlined,
+  ReloadOutlined,
+  KeyOutlined,
+  ExclamationCircleOutlined,
 } from "@ant-design/icons";
+import { electronKeyApi } from "../api/client";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -62,6 +69,57 @@ function CodeBlock({ code, onCopy }) {
 export default function Integration() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("claude-code");
+  const [electronKey, setElectronKey] = useState(null);
+  const [electronKeyLoading, setElectronKeyLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
+
+  // 获取 Electron Key 配置
+  useEffect(() => {
+    fetchElectronKey();
+  }, []);
+
+  const fetchElectronKey = async () => {
+    try {
+      setElectronKeyLoading(true);
+      const response = await electronKeyApi.get();
+      if (response.success && response.electronKey) {
+        setElectronKey(response.electronKey);
+      } else {
+        setElectronKey(null);
+      }
+    } catch (error) {
+      // 非 Electron 环境会返回 404，静默处理
+      setElectronKey(null);
+    } finally {
+      setElectronKeyLoading(false);
+    }
+  };
+
+  const handleRegenerateKey = async () => {
+    Modal.confirm({
+      title: t("integration.electronKey.regenerateTitle"),
+      icon: <ExclamationCircleOutlined />,
+      content: t("integration.electronKey.regenerateConfirm"),
+      okText: t("common.confirm"),
+      cancelText: t("common.cancel"),
+      onOk: async () => {
+        try {
+          setRegenerating(true);
+          const response = await electronKeyApi.regenerate();
+          if (response.success && response.electronKey) {
+            setElectronKey(response.electronKey);
+            message.success(t("integration.electronKey.regenerateSuccess"));
+          }
+        } catch (error) {
+          message.error(
+            error.error || t("integration.electronKey.regenerateError"),
+          );
+        } finally {
+          setRegenerating(false);
+        }
+      },
+    });
+  };
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
@@ -70,8 +128,75 @@ export default function Integration() {
 
   const baseUrl = window.location.origin;
 
+  // 获取显示的 API Key（Electron Key 或占位符）
+  const getDisplayApiKey = () => {
+    if (electronKey && electronKey.isActive) {
+      return electronKey.key;
+    }
+    return "your-api-key";
+  };
+
+  // Electron Key 信息提示
+  const ElectronKeyBanner = () => {
+    if (electronKeyLoading) {
+      return (
+        <Alert
+          message={<Spin size="small" />}
+          type="info"
+          style={{ marginBottom: 16 }}
+        />
+      );
+    }
+
+    if (electronKey && electronKey.isActive) {
+      return (
+        <Alert
+          message={
+            <Space>
+              <KeyOutlined />
+              <span>{t("integration.electronKey.activeBanner")}</span>
+              <Tag color="green">{electronKey.keyPrefix}...</Tag>
+              <Tooltip title={t("integration.electronKey.regenerateTooltip")}>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<ReloadOutlined spin={regenerating} />}
+                  onClick={handleRegenerateKey}
+                  loading={regenerating}
+                >
+                  {t("integration.electronKey.regenerate")}
+                </Button>
+              </Tooltip>
+            </Space>
+          }
+          type="success"
+          style={{ marginBottom: 16 }}
+        />
+      );
+    }
+
+    if (electronKey && !electronKey.isActive) {
+      return (
+        <Alert
+          message={
+            <Space>
+              <KeyOutlined />
+              <span>{t("integration.electronKey.disabledBanner")}</span>
+            </Space>
+          }
+          type="warning"
+          style={{ marginBottom: 16 }}
+        />
+      );
+    }
+
+    return null;
+  };
+
   const claudeCodeContent = (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
+      <ElectronKeyBanner />
+
       <Alert message={t("integration.claudeCode.tip")} type="info" showIcon />
 
       <Card title={t("integration.claudeCode.jsonConfigTitle")} size="small">
@@ -82,7 +207,7 @@ export default function Integration() {
         <CodeBlock
           code={`{
   "env": {
-    "ANTHROPIC_AUTH_TOKEN": "your-api-key",
+    "ANTHROPIC_AUTH_TOKEN": "${getDisplayApiKey()}",
     "ANTHROPIC_BASE_URL": "${baseUrl}",
     "ANTHROPIC_MODEL": "claude-sonnet-4-20250514"
   }
@@ -101,7 +226,7 @@ export default function Integration() {
         <CodeBlock
           code={`{
   "env": {
-    "ANTHROPIC_AUTH_TOKEN": "your-api-key",
+    "ANTHROPIC_AUTH_TOKEN": "${getDisplayApiKey()}",
     "ANTHROPIC_BASE_URL": "${baseUrl}",
     "ANTHROPIC_MODEL": "claude-opus-4-5",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-opus-4-5",
@@ -140,7 +265,7 @@ export default function Integration() {
                 >
                   <Paragraph>{t("integration.claudeCode.step2Desc")}</Paragraph>
                   <CodeBlock
-                    code={`claude config set --global apiKey your-api-key`}
+                    code={`claude config set --global apiKey ${getDisplayApiKey()}`}
                     onCopy={copyToClipboard}
                   />
                 </Card>
@@ -155,7 +280,7 @@ export default function Integration() {
                 <Paragraph>{t("integration.claudeCode.envVarsDesc")}</Paragraph>
                 <CodeBlock
                   code={`export ANTHROPIC_BASE_URL="${baseUrl}"
-export ANTHROPIC_AUTH_TOKEN="your-api-key"`}
+export ANTHROPIC_AUTH_TOKEN="${getDisplayApiKey()}"`}
                   onCopy={copyToClipboard}
                 />
               </Space>
@@ -168,6 +293,8 @@ export ANTHROPIC_AUTH_TOKEN="your-api-key"`}
 
   const openaiContent = (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
+      <ElectronKeyBanner />
+
       <Alert message={t("integration.openai.tip")} type="info" showIcon />
 
       <Card title={t("integration.openai.endpointTitle")} size="small">
@@ -187,7 +314,7 @@ export ANTHROPIC_AUTH_TOKEN="your-api-key"`}
         <CodeBlock
           code={`curl ${baseUrl}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer sk-your-api-key" \\
+  -H "Authorization: Bearer ${getDisplayApiKey()}" \\
   -d '{
     "model": "kiro",
     "messages": [
@@ -204,7 +331,7 @@ export ANTHROPIC_AUTH_TOKEN="your-api-key"`}
           code={`from openai import OpenAI
 
 client = OpenAI(
-    api_key="sk-your-api-key",
+    api_key="${getDisplayApiKey()}",
     base_url="${baseUrl}/v1"
 )
 
@@ -228,7 +355,7 @@ for chunk in response:
           code={`import OpenAI from 'openai';
 
 const client = new OpenAI({
-  apiKey: 'sk-your-api-key',
+  apiKey: '${getDisplayApiKey()}',
   baseURL: '${baseUrl}/v1',
 });
 
@@ -249,6 +376,8 @@ for await (const chunk of stream) {
 
   const claudeContent = (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
+      <ElectronKeyBanner />
+
       <Alert message={t("integration.claude.tip")} type="info" showIcon />
 
       <Card title={t("integration.claude.endpointTitle")} size="small">
@@ -264,7 +393,7 @@ for await (const chunk of stream) {
         <CodeBlock
           code={`curl ${baseUrl}/v1/messages \\
   -H "Content-Type: application/json" \\
-  -H "x-api-key: sk-your-api-key" \\
+  -H "x-api-key: ${getDisplayApiKey()}" \\
   -H "anthropic-version: 2023-06-01" \\
   -d '{
     "model": "claude-sonnet-4-20250514",
@@ -283,7 +412,7 @@ for await (const chunk of stream) {
           code={`import anthropic
 
 client = anthropic.Anthropic(
-    api_key="sk-your-api-key",
+    api_key="${getDisplayApiKey()}",
     base_url="${baseUrl}"
 )
 
@@ -305,7 +434,7 @@ with client.messages.stream(
           code={`import Anthropic from '@anthropic-ai/sdk';
 
 const client = new Anthropic({
-  apiKey: 'sk-your-api-key',
+  apiKey: '${getDisplayApiKey()}',
   baseURL: '${baseUrl}',
 });
 
@@ -329,6 +458,8 @@ for await (const event of stream) {
 
   const otherToolsContent = (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
+      <ElectronKeyBanner />
+
       <Card title={t("integration.other.cursorTitle")} size="small">
         <Paragraph>{t("integration.other.cursorDesc")}</Paragraph>
         <Space direction="vertical" style={{ width: "100%" }}>
@@ -340,7 +471,7 @@ for await (const event of stream) {
           </ol>
           <CodeBlock
             code={`Base URL: ${baseUrl}/v1
-API Key: sk-your-api-key`}
+API Key: ${getDisplayApiKey()}`}
             onCopy={copyToClipboard}
           />
         </Space>
@@ -356,7 +487,7 @@ API Key: sk-your-api-key`}
       "provider": "openai",
       "model": "kiro",
       "apiBase": "${baseUrl}/v1",
-      "apiKey": "sk-your-api-key"
+      "apiKey": "${getDisplayApiKey()}"
     }
   ]
 }`}
@@ -368,7 +499,7 @@ API Key: sk-your-api-key`}
         <Paragraph>{t("integration.other.aiderDesc")}</Paragraph>
         <CodeBlock
           code={`export OPENAI_API_BASE="${baseUrl}/v1"
-export OPENAI_API_KEY="sk-your-api-key"
+export OPENAI_API_KEY="${getDisplayApiKey()}"
 
 aider --model openai/kiro`}
           onCopy={copyToClipboard}
@@ -379,7 +510,7 @@ aider --model openai/kiro`}
         <Paragraph>{t("integration.other.lobechatDesc")}</Paragraph>
         <CodeBlock
           code={`API Endpoint: ${baseUrl}/v1
-API Key: sk-your-api-key
+API Key: ${getDisplayApiKey()}
 Model: kiro`}
           onCopy={copyToClipboard}
         />

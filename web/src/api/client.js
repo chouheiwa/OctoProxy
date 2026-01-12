@@ -100,4 +100,10 @@ export const usageApi = {
   refresh: (providerId) => client.post(`/usage/${providerId}`),
 };
 
+// Electron Key API (仅 Electron 环境可用)
+export const electronKeyApi = {
+  get: () => client.get("/electron-key"),
+  regenerate: () => client.post("/electron-key/regenerate"),
+};
+
 export default client;

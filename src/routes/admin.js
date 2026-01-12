@@ -45,6 +45,11 @@ import {
   cancelSession,
   stopCallbackServer,
 } from "../kiro/oauth.js";
+import {
+  getElectronKeyConfig,
+  regenerateElectronKey,
+} from "../electron-key.js";
+import { isElectron } from "../config.js";
 
 /**
  * 解析请求体
@@ -699,6 +704,73 @@ async function handleCancelOAuth(req, res, sessionId) {
   sendSuccess(res, { message: "OAuth session cancelled" });
 }
 
+// ==================== Electron Key 管理 ====================
+
+/**
+ * 获取 Electron Key 配置
+ * 仅在 Electron 环境下可用
+ */
+async function handleGetElectronKey(req, res) {
+  // 检查是否是 Electron 环境
+  if (!isElectron()) {
+    return sendError(
+      res,
+      404,
+      "Electron Key is only available in Electron environment",
+    );
+  }
+
+  const auth = authenticateSession(req, res);
+  if (!auth.success) {
+    return sendError(res, 401, auth.error);
+  }
+
+  try {
+    const config = getElectronKeyConfig();
+    if (!config) {
+      return sendError(res, 404, "Electron Key not found");
+    }
+
+    sendSuccess(res, { electronKey: config });
+  } catch (e) {
+    sendError(res, 500, e.message);
+  }
+}
+
+/**
+ * 重新生成 Electron Key
+ * 仅在 Electron 环境下可用
+ */
+async function handleRegenerateElectronKey(req, res) {
+  // 检查是否是 Electron 环境
+  if (!isElectron()) {
+    return sendError(
+      res,
+      404,
+      "Electron Key is only available in Electron environment",
+    );
+  }
+
+  const auth = authenticateSession(req, res);
+  if (!auth.success) {
+    return sendError(res, 401, auth.error);
+  }
+
+  try {
+    const config = await regenerateElectronKey();
+    if (!config) {
+      return sendError(res, 500, "Failed to regenerate Electron Key");
+    }
+
+    sendSuccess(res, {
+      electronKey: config,
+      message: "Electron Key regenerated successfully",
+    });
+  } catch (e) {
+    sendError(res, 500, e.message);
+  }
+}
+
 // ==================== 统计和配置 ====================
 
 async function handleGetStats(req, res) {
@@ -1104,6 +1176,17 @@ export async function handleAdminRoutes(req, res) {
       await handleCancelOAuth(req, res, sessionId);
       return true;
     }
+  }
+
+  // Electron Key 路由 (仅 Electron 环境可用)
+  if (path === "/api/electron-key" && method === "GET") {
+    await handleGetElectronKey(req, res);
+    return true;
+  }
+
+  if (path === "/api/electron-key/regenerate" && method === "POST") {
+    await handleRegenerateElectronKey(req, res);
+    return true;
   }
 
   return false;

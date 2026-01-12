@@ -204,6 +204,16 @@
   "integration": {
     "title": "Integration Guide",
     "description": "Learn how to integrate OctoProxy with various tools and applications",
+    "electronKey": {
+      "activeBanner": "Electron Auto Key is active. Configuration below uses your API Key.",
+      "disabledBanner": "Electron Auto Key is disabled. Please enable it in API Keys page or create a new key.",
+      "regenerate": "Regenerate",
+      "regenerateTooltip": "Generate a new API Key (old key will be invalidated)",
+      "regenerateTitle": "Regenerate Electron Key",
+      "regenerateConfirm": "Are you sure you want to regenerate the Electron Key? The old key will be invalidated immediately.",
+      "regenerateSuccess": "Electron Key regenerated successfully",
+      "regenerateError": "Failed to regenerate Electron Key"
+    },
     "claudeCode": {
       "tip": "Claude Code is Anthropic's official command-line AI programming assistant that supports custom API endpoints",
       "jsonConfigTitle": "JSON Configuration (Recommended)",

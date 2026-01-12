@@ -204,6 +204,16 @@
   "integration": {
     "title": "集成指南",
     "description": "了解如何将 OctoProxy 集成到各种工具和应用中",
+    "electronKey": {
+      "activeBanner": "Electron 自动密钥已激活，下方配置已填入您的 API 密钥。",
+      "disabledBanner": "Electron 自动密钥已禁用，请在 API 密钥页面启用或创建新密钥。",
+      "regenerate": "重新生成",
+      "regenerateTooltip": "生成新的 API 密钥（旧密钥将失效）",
+      "regenerateTitle": "重新生成 Electron 密钥",
+      "regenerateConfirm": "确定要重新生成 Electron 密钥吗？旧密钥将立即失效。",
+      "regenerateSuccess": "Electron 密钥已重新生成",
+      "regenerateError": "重新生成 Electron 密钥失败"
+    },
     "claudeCode": {
       "tip": "Claude Code 是 Anthropic 官方的命令行 AI 编程助手，支持自定义 API 端点",
       "jsonConfigTitle": "JSON 配置（推荐）",

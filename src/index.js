@@ -2,7 +2,7 @@
  * OctoProxy 入口文件
  */
 
-import { loadConfig, getDbPath } from "./config.js";
+import { loadConfig, getDbPath, isElectron } from "./config.js";
 import { initDatabase, closeDatabase } from "./db/index.js";
 import { startServer } from "./server.js";
 import { cleanExpiredSessions } from "./db/sessions.js";
@@ -11,6 +11,7 @@ import {
   tryRecoverUnhealthyProviders,
   syncProvidersUsage,
 } from "./pool/manager.js";
+import { initElectronAutoKey } from "./electron-key.js";
 
 // 加载配置
 console.log("[Main] Loading configuration...");
@@ -151,6 +152,11 @@ async function main() {
 
     // 启动时清理过期会话
     cleanExpiredSessions();
+
+    // Electron 环境下初始化自动 API Key
+    if (isElectron()) {
+      await initElectronAutoKey();
+    }
 
     console.log("[Main] OctoProxy started successfully");
   } catch (error) {

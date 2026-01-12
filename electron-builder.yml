@@ -88,6 +88,6 @@ linux:
 
 publish:
   provider: github
-  owner: ${GH_OWNER}
-  repo: ${GH_REPO}
+  owner: chouheiwa
+  repo: OctoProxy
   releaseType: release

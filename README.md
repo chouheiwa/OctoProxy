@@ -1,102 +1,104 @@
 # OctoProxy
 
-OctoProxy 是一个多账户 API 代理服务，将多种 AI 服务的能力通过标准的 OpenAI 和 Claude API 协议暴露出来，支持多账户池化管理、LRU 负载均衡、健康检查和自动故障恢复。
+[中文文档](./README.zh-CN.md) | English
 
-## 特性
+OctoProxy is a multi-account API proxy service that exposes various AI service capabilities through standard OpenAI and Claude API protocols, supporting multi-account pooling, LRU load balancing, health checks, and automatic failover recovery.
 
-- **多协议支持**: 同时支持 OpenAI 和 Claude API 格式
-- **多账户池化**: 支持多个账户，自动负载均衡
-- **多种选择策略**: LRU、轮询、最少/最多剩余额度优先等
-- **OAuth 认证**: 支持 Google、GitHub、AWS Builder ID 登录
-- **健康检查**: 自动检测账户状态，故障自动恢复
-- **用量监控**: 实时查看各账户用量情况
-- **Web 管理界面**: 基于 React + Ant Design 的现代化管理界面
-- **多语言支持**: 支持中文和英文界面切换
-- **桌面应用**: 基于 Electron 的跨平台桌面应用
-- **Docker 支持**: 一键部署，支持 amd64/arm64
+## Features
 
-## 支持的模型
+- **Multi-Protocol Support**: Supports both OpenAI and Claude API formats
+- **Multi-Account Pooling**: Supports multiple accounts with automatic load balancing
+- **Multiple Selection Strategies**: LRU, round-robin, least/most remaining quota priority, etc.
+- **OAuth Authentication**: Supports Google, GitHub, AWS Builder ID login
+- **Health Checks**: Automatic account status detection with automatic failover recovery
+- **Usage Monitoring**: Real-time view of each account's usage
+- **Web Admin Interface**: Modern admin interface based on React + Ant Design
+- **Multi-language Support**: Supports Chinese and English interface switching
+- **Desktop Application**: Cross-platform desktop app based on Electron
+- **Docker Support**: One-click deployment, supports amd64/arm64
 
-| 模型名称 | 说明 |
-|---------|------|
+## Supported Models
+
+| Model Name | Description |
+|------------|-------------|
 | `claude-opus-4-5` | Claude Opus 4.5 |
 | `claude-sonnet-4-5` | Claude Sonnet 4.5 |
 | `claude-haiku-4-5` | Claude Haiku 4.5 |
 | `claude-sonnet-4-20250514` | Claude Sonnet 4 |
 | `claude-3-7-sonnet-20250219` | Claude 3.7 Sonnet |
 
-## 快速开始
+## Quick Start
 
-### 使用 Docker (推荐)
+### Using Docker (Recommended)
 
 ```bash
-# 克隆项目
+# Clone the project
 git clone https://github.com/your-username/octo-proxy.git
 cd octo-proxy
 
-# 启动服务
+# Start the service
 docker-compose up -d
 
-# 查看日志
+# View logs
 docker-compose logs -f
 ```
 
-服务启动后访问 http://localhost:9091 进入管理界面。
+After the service starts, visit http://localhost:9091 to access the admin interface.
 
-### 手动安装
+### Manual Installation
 
-#### 环境要求
+#### Requirements
 
 - Node.js >= 18
-- npm 或 yarn
+- npm or yarn
 
-#### 安装步骤
+#### Installation Steps
 
 ```bash
-# 克隆项目
+# Clone the project
 git clone https://github.com/your-username/octo-proxy.git
 cd octo-proxy
 
-# 安装后端依赖
+# Install backend dependencies
 npm install
 
-# 安装前端依赖
+# Install frontend dependencies
 cd web && npm install && cd ..
 
-# 构建前端
+# Build frontend
 cd web && npm run build && cd ..
 npm run copy:static
 
-# 启动服务
+# Start service
 npm start
 ```
 
-### 默认配置
+### Default Configuration
 
-- **端口**: 9091
-- **管理员账号**: admin
-- **管理员密码**: admin123
-- **数据库**: data/octo-proxy.db
+- **Port**: 9091
+- **Admin Username**: admin
+- **Admin Password**: admin123
+- **Database**: data/octo-proxy.db
 
-## 使用方法
+## Usage
 
-### 1. 添加账户
+### 1. Add Account
 
-1. 登录管理界面 (http://localhost:9091)
-2. 进入「提供商」页面
-3. 点击「通过 OAuth 添加」
-4. 选择认证方式 (Google / GitHub / AWS Builder ID)
-5. 完成授权流程
+1. Login to admin interface (http://localhost:9091)
+2. Go to "Providers" page
+3. Click "Add via OAuth"
+4. Select authentication method (Google / GitHub / AWS Builder ID)
+5. Complete the authorization flow
 
-### 2. 创建 API 密钥
+### 2. Create API Key
 
-1. 进入「API 密钥」页面
-2. 点击「创建 API 密钥」
-3. 复制生成的密钥（仅显示一次）
+1. Go to "API Keys" page
+2. Click "Create API Key"
+3. Copy the generated key (shown only once)
 
-### 3. 调用 API
+### 3. Call API
 
-#### OpenAI 格式
+#### OpenAI Format
 
 ```bash
 curl http://localhost:9091/v1/chat/completions \
@@ -108,7 +110,7 @@ curl http://localhost:9091/v1/chat/completions \
   }'
 ```
 
-#### Claude 格式
+#### Claude Format
 
 ```bash
 curl http://localhost:9091/v1/messages \
@@ -122,11 +124,11 @@ curl http://localhost:9091/v1/messages \
   }'
 ```
 
-## 集成指南
+## Integration Guide
 
 ### Claude Code
 
-在 `~/.claude/settings.json` 中添加：
+Add to `~/.claude/settings.json`:
 
 ```json
 {
@@ -137,14 +139,14 @@ curl http://localhost:9091/v1/messages \
 
 ### Cursor
 
-1. 打开 Cursor 设置
-2. 找到 Models 或 OpenAI 配置部分
-3. 设置 API URL: `http://localhost:9091/v1`
-4. 设置 API Key: `YOUR_API_KEY`
+1. Open Cursor settings
+2. Find Models or OpenAI configuration section
+3. Set API URL: `http://localhost:9091/v1`
+4. Set API Key: `YOUR_API_KEY`
 
 ### Continue (VS Code)
 
-在 `~/.continue/config.json` 中添加：
+Add to `~/.continue/config.json`:
 
 ```json
 {
@@ -166,41 +168,41 @@ export OPENAI_API_KEY=YOUR_API_KEY
 aider --model claude-sonnet-4-5
 ```
 
-## API 端点
+## API Endpoints
 
-### 代理 API
+### Proxy API
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/v1/models` | GET | 获取可用模型列表 |
-| `/v1/chat/completions` | POST | OpenAI 格式聊天补全 |
-| `/v1/messages` | POST | Claude 格式消息 |
-| `/health` | GET | 健康检查 |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/models` | GET | Get available models list |
+| `/v1/chat/completions` | POST | OpenAI format chat completions |
+| `/v1/messages` | POST | Claude format messages |
+| `/health` | GET | Health check |
 
-### 管理 API
+### Admin API
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/api/login` | POST | 登录 |
-| `/api/providers` | GET/POST | 提供商管理 |
-| `/api/api-keys` | GET/POST | API 密钥管理 |
-| `/api/users` | GET/POST | 用户管理 |
-| `/api/usage` | GET | 用量查询 |
-| `/api/config` | GET/PUT | 系统配置 |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/login` | POST | Login |
+| `/api/providers` | GET/POST | Provider management |
+| `/api/api-keys` | GET/POST | API key management |
+| `/api/users` | GET/POST | User management |
+| `/api/usage` | GET | Usage query |
+| `/api/config` | GET/PUT | System configuration |
 
-## 提供商选择策略
+## Provider Selection Strategies
 
-| 策略 | 说明 |
-|------|------|
-| `lru` | 最近最少使用（默认，均匀分配） |
-| `round_robin` | 轮询（按 ID 顺序循环） |
-| `least_usage` | 最少剩余额度优先（集中消耗） |
-| `most_usage` | 最多剩余额度优先（均衡消耗） |
-| `oldest_first` | 最早创建优先（集中消耗） |
+| Strategy | Description |
+|----------|-------------|
+| `lru` | Least Recently Used (default, even distribution) |
+| `round_robin` | Round Robin (cycle by ID order) |
+| `least_usage` | Least Remaining Quota Priority (concentrated consumption) |
+| `most_usage` | Most Remaining Quota Priority (balanced consumption) |
+| `oldest_first` | Oldest Created Priority (concentrated consumption) |
 
-## 配置说明
+## Configuration
 
-配置文件位于 `configs/config.json`：
+Configuration file is located at `configs/config.json`:
 
 ```json
 {
@@ -210,47 +212,47 @@ aider --model claude-sonnet-4-5
   "sessionExpireHours": 24,
   "maxErrorCount": 3,
   "healthCheckIntervalMinutes": 10,
-  "reries": 3,
+  "retries": 3,
   "providerStrategy": "lru",
   "usageSyncIntervalMinutes": 10
 }
 ```
 
-## 目录结构
+## Directory Structure
 
 ```
 octo-proxy/
-├── src/                    # 后端源代码
-│   ├── index.js            # 应用入口
-│   ├── server.js           # HTTP 服务器
-│   ├── config.js           # 配置管理
-│   ├── db/                 # 数据库层
-│   ├── kiro/               # Kiro API 集成
-│   ├── converters/         # 协议转换器
-│   ├── middleware/         # 中间件
-│   ├── routes/             # 路由处理
-│   └── pool/               # 提供商池管理
-├── web/                    # React 前端
-├── electron/               # Electron 桌面应用
-├── configs/                # 配置文件
-├── data/                   # 数据库文件
-├── Dockerfile              # Docker 构建文件
-└── docker-compose.yml      # Docker Compose 配置
+├── src/                    # Backend source code
+│   ├── index.js            # Application entry
+│   ├── server.js           # HTTP server
+│   ├── config.js           # Configuration management
+│   ├── db/                 # Database layer
+│   ├── kiro/               # Kiro API integration
+│   ├── converters/         # Protocol converters
+│   ├── middleware/         # Middleware
+│   ├── routes/             # Route handlers
+│   └── pool/               # Provider pool management
+├── web/                    # React frontend
+├── electron/               # Electron desktop app
+├── configs/                # Configuration files
+├── data/                   # Database files
+├── Dockerfile              # Docker build file
+└── docker-compose.yml      # Docker Compose config
 ```
 
-## 开发
+## Development
 
-### 开发模式
+### Development Mode
 
 ```bash
-# 后端开发（热重载）
+# Backend development (hot reload)
 npm run dev
 
-# 前端开发
+# Frontend development
 cd web && npm run dev
 ```
 
-### 构建 Electron 应用
+### Build Electron App
 
 ```bash
 # macOS
@@ -263,21 +265,21 @@ npm run electron:build:win
 npm run electron:build:linux
 ```
 
-## Docker 部署
+## Docker Deployment
 
-### 使用 Docker Compose
+### Using Docker Compose
 
 ```bash
 docker-compose up -d
 ```
 
-### 手动构建
+### Manual Build
 
 ```bash
-# 构建镜像
+# Build image
 docker build -t octo-proxy .
 
-# 运行容器
+# Run container
 docker run -d \
   --name octo-proxy \
   -p 9091:9091 \
@@ -287,35 +289,35 @@ docker run -d \
   octo-proxy
 ```
 
-### 数据持久化
+### Data Persistence
 
-- `/app/data` - SQLite 数据库文件
-- `/app/configs` - 配置文件
+- `/app/data` - SQLite database files
+- `/app/configs` - Configuration files
 
-## 常见问题
+## FAQ
 
-### Q: 如何重置管理员密码？
+### Q: How to reset admin password?
 
-删除 `configs/config.json` 文件后重启服务，将使用默认密码 `admin123`。
+Delete the `configs/config.json` file and restart the service, it will use the default password `admin123`.
 
-### Q: 账户显示不健康怎么办？
+### Q: What to do if account shows unhealthy?
 
-1. 检查账户是否已过期或被禁用
-2. 尝试手动点击「检查」按钮
-3. 查看错误信息，根据提示处理
+1. Check if the account has expired or been disabled
+2. Try manually clicking the "Check" button
+3. View the error message and handle accordingly
 
-### Q: 如何查看 API 调用日志？
+### Q: How to view API call logs?
 
-在 `configs/config.json` 中设置 `"debug": true`，重启服务后将输出详细日志。
+Set `"debug": true` in `configs/config.json`, restart the service to output detailed logs.
 
-### Q: 支持流式输出吗？
+### Q: Does it support streaming output?
 
-支持。在请求中设置 `"stream": true` 即可启用流式输出。
+Yes. Set `"stream": true` in the request to enable streaming output.
 
-## 许可证
+## License
 
 MIT License
 
-## 贡献
+## Contributing
 
-欢迎提交 Issue 和 Pull Request！
+Issues and Pull Requests are welcome!

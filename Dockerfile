@@ -53,10 +53,10 @@ RUN mkdir -p /app/data /app/configs
 # 设置环境变量
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
-ENV PORT=9091
+ENV PORT=12000
 
 # 暴露端口
-EXPOSE 9091
+EXPOSE 12000
 
 # 数据卷
 VOLUME ["/app/data", "/app/configs"]

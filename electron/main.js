@@ -127,7 +127,7 @@ function createWindow() {
   });
 
   // 加载应用（使用当前端口）
-  const port = currentPort || 9092;
+  const port = currentPort || 12000;
   mainWindow.loadURL(`http://localhost:${port}`);
 
   // 窗口准备好后显示
@@ -427,8 +427,8 @@ app.whenReady().then(async () => {
   // 设置环境变量
   setupEnvironment();
 
-  // 获取配置的端口（默认 9092）
-  const configPort = parseInt(process.env.PORT) || 9092;
+  // 获取配置的端口（默认 12000）
+  const configPort = parseInt(process.env.PORT) || 12000;
 
   // 检查端口是否可用
   const resolvedPort = await checkAndResolvePort(configPort);

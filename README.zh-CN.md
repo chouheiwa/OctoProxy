@@ -40,7 +40,7 @@ mkdir -p data configs
 # 运行容器
 docker run -d \
   --name octo-proxy \
-  -p 9091:9091 \
+  -p 12000:12000 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/configs:/app/configs \
   --restart unless-stopped \
@@ -77,7 +77,7 @@ docker pull ghcr.io/chouheiwa/octoproxy:v1.0.0
 docker pull ghcr.io/chouheiwa/octoproxy:latest
 ```
 
-服务启动后访问 http://localhost:9091 进入管理界面。
+服务启动后访问 http://localhost:12000 进入管理界面。
 
 ### 手动安装
 
@@ -109,7 +109,7 @@ npm start
 
 ### 默认配置
 
-- **端口**: 9091
+- **端口**: 12000
 - **管理员账号**: admin
 - **管理员密码**: admin123
 - **数据库**: data/octo-proxy.db
@@ -118,7 +118,7 @@ npm start
 
 ### 1. 添加账户
 
-1. 登录管理界面 (http://localhost:9091)
+1. 登录管理界面 (http://localhost:12000)
 2. 进入「提供商」页面
 3. 点击「通过 OAuth 添加」
 4. 选择认证方式 (Google / GitHub / AWS Builder ID)
@@ -135,7 +135,7 @@ npm start
 #### OpenAI 格式
 
 ```bash
-curl http://localhost:9091/v1/chat/completions \
+curl http://localhost:12000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{
@@ -147,7 +147,7 @@ curl http://localhost:9091/v1/chat/completions \
 #### Claude 格式
 
 ```bash
-curl http://localhost:9091/v1/messages \
+curl http://localhost:12000/v1/messages \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -H "anthropic-version: 2023-06-01" \
@@ -166,7 +166,7 @@ curl http://localhost:9091/v1/messages \
 
 ```json
 {
-  "apiUrl": "http://localhost:9091",
+  "apiUrl": "http://localhost:12000",
   "apiKey": "YOUR_API_KEY"
 }
 ```
@@ -175,7 +175,7 @@ curl http://localhost:9091/v1/messages \
 
 1. 打开 Cursor 设置
 2. 找到 Models 或 OpenAI 配置部分
-3. 设置 API URL: `http://localhost:9091/v1`
+3. 设置 API URL: `http://localhost:12000/v1`
 4. 设置 API Key: `YOUR_API_KEY`
 
 ### Continue (VS Code)
@@ -188,7 +188,7 @@ curl http://localhost:9091/v1/messages \
     "title": "OctoProxy",
     "provider": "openai",
     "model": "claude-sonnet-4-5",
-    "apiBase": "http://localhost:9091/v1",
+    "apiBase": "http://localhost:12000/v1",
     "apiKey": "YOUR_API_KEY"
   }]
 }
@@ -197,7 +197,7 @@ curl http://localhost:9091/v1/messages \
 ### Aider
 
 ```bash
-export OPENAI_API_BASE=http://localhost:9091/v1
+export OPENAI_API_BASE=http://localhost:12000/v1
 export OPENAI_API_KEY=YOUR_API_KEY
 aider --model claude-sonnet-4-5
 ```
@@ -240,7 +240,7 @@ aider --model claude-sonnet-4-5
 
 ```json
 {
-  "port": 9091,
+  "port": 12000,
   "host": "0.0.0.0",
   "adminPassword": "admin123",
   "sessionExpireHours": 24,
@@ -310,7 +310,7 @@ mkdir -p data configs
 # 运行容器
 docker run -d \
   --name octo-proxy \
-  -p 9091:9091 \
+  -p 12000:12000 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/configs:/app/configs \
   --restart unless-stopped \
@@ -332,7 +332,7 @@ docker build -t octo-proxy .
 # 运行容器
 docker run -d \
   --name octo-proxy \
-  -p 9091:9091 \
+  -p 12000:12000 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/configs:/app/configs \
   --restart unless-stopped \
@@ -350,7 +350,7 @@ docker run -d \
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PORT` | `9091` | 服务端口 |
+| `PORT` | `12000` | 服务端口 |
 | `HOST` | `0.0.0.0` | 绑定地址 |
 | `NODE_ENV` | `production` | 运行环境 |
 

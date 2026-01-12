@@ -40,7 +40,7 @@ mkdir -p data configs
 # Run container
 docker run -d \
   --name octo-proxy \
-  -p 9091:9091 \
+  -p 12000:12000 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/configs:/app/configs \
   --restart unless-stopped \
@@ -77,7 +77,7 @@ docker pull ghcr.io/chouheiwa/octoproxy:v1.0.0
 docker pull ghcr.io/chouheiwa/octoproxy:latest
 ```
 
-After the service starts, visit http://localhost:9091 to access the admin interface.
+After the service starts, visit http://localhost:12000 to access the admin interface.
 
 ### Manual Installation
 
@@ -109,7 +109,7 @@ npm start
 
 ### Default Configuration
 
-- **Port**: 9091
+- **Port**: 12000
 - **Admin Username**: admin
 - **Admin Password**: admin123
 - **Database**: data/octo-proxy.db
@@ -118,7 +118,7 @@ npm start
 
 ### 1. Add Account
 
-1. Login to admin interface (http://localhost:9091)
+1. Login to admin interface (http://localhost:12000)
 2. Go to "Providers" page
 3. Click "Add via OAuth"
 4. Select authentication method (Google / GitHub / AWS Builder ID)
@@ -135,7 +135,7 @@ npm start
 #### OpenAI Format
 
 ```bash
-curl http://localhost:9091/v1/chat/completions \
+curl http://localhost:12000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{
@@ -147,7 +147,7 @@ curl http://localhost:9091/v1/chat/completions \
 #### Claude Format
 
 ```bash
-curl http://localhost:9091/v1/messages \
+curl http://localhost:12000/v1/messages \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -H "anthropic-version: 2023-06-01" \
@@ -166,7 +166,7 @@ Add to `~/.claude/settings.json`:
 
 ```json
 {
-  "apiUrl": "http://localhost:9091",
+  "apiUrl": "http://localhost:12000",
   "apiKey": "YOUR_API_KEY"
 }
 ```
@@ -175,7 +175,7 @@ Add to `~/.claude/settings.json`:
 
 1. Open Cursor settings
 2. Find Models or OpenAI configuration section
-3. Set API URL: `http://localhost:9091/v1`
+3. Set API URL: `http://localhost:12000/v1`
 4. Set API Key: `YOUR_API_KEY`
 
 ### Continue (VS Code)
@@ -188,7 +188,7 @@ Add to `~/.continue/config.json`:
     "title": "OctoProxy",
     "provider": "openai",
     "model": "claude-sonnet-4-5",
-    "apiBase": "http://localhost:9091/v1",
+    "apiBase": "http://localhost:12000/v1",
     "apiKey": "YOUR_API_KEY"
   }]
 }
@@ -197,7 +197,7 @@ Add to `~/.continue/config.json`:
 ### Aider
 
 ```bash
-export OPENAI_API_BASE=http://localhost:9091/v1
+export OPENAI_API_BASE=http://localhost:12000/v1
 export OPENAI_API_KEY=YOUR_API_KEY
 aider --model claude-sonnet-4-5
 ```
@@ -240,7 +240,7 @@ Configuration file is located at `configs/config.json`:
 
 ```json
 {
-  "port": 9091,
+  "port": 12000,
   "host": "0.0.0.0",
   "adminPassword": "admin123",
   "sessionExpireHours": 24,
@@ -310,7 +310,7 @@ mkdir -p data configs
 # Run container
 docker run -d \
   --name octo-proxy \
-  -p 9091:9091 \
+  -p 12000:12000 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/configs:/app/configs \
   --restart unless-stopped \
@@ -332,7 +332,7 @@ docker build -t octo-proxy .
 # Run container
 docker run -d \
   --name octo-proxy \
-  -p 9091:9091 \
+  -p 12000:12000 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/configs:/app/configs \
   --restart unless-stopped \
@@ -350,7 +350,7 @@ docker run -d \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `9091` | Service port |
+| `PORT` | `12000` | Service port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `NODE_ENV` | `production` | Environment mode |
 

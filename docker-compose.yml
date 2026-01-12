@@ -6,7 +6,7 @@ services:
     container_name: octo-proxy
     restart: unless-stopped
     ports:
-      - "9091:9091"
+      - "12000:12000"
     volumes:
       # 数据持久化
       - ./data:/app/data
@@ -15,9 +15,9 @@ services:
     environment:
       - NODE_ENV=production
       - HOST=0.0.0.0
-      - PORT=9091
+      - PORT=12000
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9091/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:12000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

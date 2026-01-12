@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 
 // 默认配置
 const defaultConfig = {
-  port: 9091,
+  port: 12000,
   host: "0.0.0.0",
   dbPath: "data/octo-proxy.db",
   adminPassword: "admin123",

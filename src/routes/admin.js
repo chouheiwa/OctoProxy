@@ -25,6 +25,7 @@ import {
 import {
   getAllProviders,
   getProviderById,
+  getProviderByName,
   createProvider,
   updateProvider,
   deleteProvider,
@@ -562,6 +563,140 @@ async function handleProviderHealthCheck(req, res, id) {
   }
 }
 
+/**
+ * 导出所有提供商
+ */
+async function handleExportProviders(req, res) {
+  const auth = authenticateAdmin(req, res);
+  if (!auth.success) {
+    return sendError(res, 401, auth.error);
+  }
+
+  const providers = getAllProviders();
+
+  // 格式化导出数据
+  const exportData = {
+    version: "1.0",
+    exportedAt: new Date().toISOString(),
+    providers: providers.map((p) => {
+      let credentials = p.credentials;
+      // 尝试解析凭据为对象
+      try {
+        credentials = JSON.parse(p.credentials);
+      } catch {
+        // 保持原样
+      }
+
+      return {
+        name: p.name,
+        region: p.region,
+        credentials: credentials,
+        checkHealth: p.check_health === 1,
+        checkModelName: p.check_model_name,
+        isDisabled: p.is_disabled === 1,
+      };
+    }),
+  };
+
+  sendSuccess(res, exportData);
+}
+
+/**
+ * 导入提供商
+ */
+async function handleImportProviders(req, res) {
+  const auth = authenticateAdmin(req, res);
+  if (!auth.success) {
+    return sendError(res, 401, auth.error);
+  }
+
+  let body;
+  try {
+    body = await parseBody(req);
+  } catch (e) {
+    return sendError(res, 400, e.message);
+  }
+
+  const { providers, skipExisting } = body;
+
+  if (!providers || !Array.isArray(providers)) {
+    return sendError(res, 400, "providers array is required");
+  }
+
+  const results = {
+    imported: 0,
+    skipped: 0,
+    failed: 0,
+    errors: [],
+  };
+
+  for (let i = 0; i < providers.length; i++) {
+    const p = providers[i];
+
+    // 验证必填字段
+    if (!p.credentials) {
+      results.failed++;
+      results.errors.push({
+        index: i,
+        name: p.name || `Provider #${i}`,
+        error: "credentials is required",
+      });
+      continue;
+    }
+
+    // 检查是否已存在同名提供商
+    if (p.name) {
+      const existing = getProviderByName(p.name);
+      if (existing) {
+        if (skipExisting) {
+          results.skipped++;
+          continue;
+        } else {
+          results.failed++;
+          results.errors.push({
+            index: i,
+            name: p.name,
+            error: "Provider with this name already exists",
+          });
+          continue;
+        }
+      }
+    }
+
+    try {
+      createProvider({
+        name: p.name,
+        region: p.region || "us-east-1",
+        credentials:
+          typeof p.credentials === "string"
+            ? p.credentials
+            : JSON.stringify(p.credentials),
+        checkHealth: p.checkHealth !== false,
+        checkModelName: p.checkModelName,
+      });
+
+      // 如果导入时是禁用状态，则更新
+      if (p.isDisabled) {
+        const created = getProviderByName(p.name);
+        if (created) {
+          updateProvider(created.id, { isDisabled: true });
+        }
+      }
+
+      results.imported++;
+    } catch (e) {
+      results.failed++;
+      results.errors.push({
+        index: i,
+        name: p.name || `Provider #${i}`,
+        error: e.message,
+      });
+    }
+  }
+
+  sendSuccess(res, results);
+}
+
 // ==================== OAuth 认证 ====================
 
 /**
@@ -1088,6 +1223,16 @@ export async function handleAdminRoutes(req, res) {
   }
 
   // 提供商路由
+  if (path === "/api/providers/export" && method === "GET") {
+    await handleExportProviders(req, res);
+    return true;
+  }
+
+  if (path === "/api/providers/import" && method === "POST") {
+    await handleImportProviders(req, res);
+    return true;
+  }
+
   if (path === "/api/providers" && method === "GET") {
     await handleGetProviders(req, res);
     return true;

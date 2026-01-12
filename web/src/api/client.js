@@ -65,6 +65,8 @@ export const providersApi = {
   update: (id, data) => client.put(`/providers/${id}`, data),
   delete: (id) => client.delete(`/providers/${id}`),
   healthCheck: (id) => client.post(`/providers/${id}/health-check`),
+  export: () => client.get("/providers/export"),
+  import: (data) => client.post("/providers/import", data),
 };
 
 // OAuth API

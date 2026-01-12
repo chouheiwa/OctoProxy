@@ -27,6 +27,8 @@ import {
   GithubOutlined,
   CloudOutlined,
   LinkOutlined,
+  ExportOutlined,
+  ImportOutlined,
 } from "@ant-design/icons";
 import { providersApi, oauthApi } from "../api/client";
 
@@ -285,6 +287,102 @@ export default function Providers() {
     }
   };
 
+  const handleExport = async () => {
+    try {
+      const response = await providersApi.export();
+      if (response.success) {
+        // 创建下载
+        const blob = new Blob([JSON.stringify(response, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        a.download = `octo-proxy-providers-${timestamp}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        message.success(t("providers.exportSuccess"));
+
+        // 显示安全提醒
+        Modal.warning({
+          title: t("providers.export"),
+          content: t("providers.exportWarning"),
+        });
+      }
+    } catch (err) {
+      message.error(err.message || t("errors.operationFailed"));
+    }
+  };
+
+  const handleImport = () => {
+    // 创建文件输入框
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        // 验证格式
+        if (!data.providers || !Array.isArray(data.providers)) {
+          message.error(t("providers.importInvalidFile"));
+          return;
+        }
+
+        // 显示确认对话框
+        Modal.confirm({
+          title: t("providers.import"),
+          content: (
+            <div>
+              <p>
+                {t("providers.importSelectFile")}: {file.name}
+              </p>
+              <p>
+                {t("common.name")}: {data.providers.length}{" "}
+                {t("providers.title").toLowerCase()}
+              </p>
+            </div>
+          ),
+          okText: t("common.confirm"),
+          cancelText: t("common.cancel"),
+          onOk: async () => {
+            try {
+              const response = await providersApi.import({
+                providers: data.providers,
+                skipExisting: true,
+              });
+              if (response.success) {
+                message.success(
+                  t("providers.importSuccess", {
+                    imported: response.imported,
+                    skipped: response.skipped,
+                    failed: response.failed,
+                  }),
+                );
+                loadProviders();
+              } else {
+                message.error(response.error || t("providers.importError"));
+              }
+            } catch (err) {
+              message.error(err.message || t("providers.importError"));
+            }
+          },
+        });
+      } catch {
+        message.error(t("providers.importInvalidFile"));
+      }
+    };
+    input.click();
+  };
+
   const openEditModal = (provider) => {
     setEditingProvider(provider);
     form.setFieldsValue({
@@ -398,6 +496,12 @@ export default function Providers() {
           {t("providers.title")}
         </Title>
         <Space>
+          <Button icon={<ExportOutlined />} onClick={handleExport}>
+            {t("providers.export")}
+          </Button>
+          <Button icon={<ImportOutlined />} onClick={handleImport}>
+            {t("providers.import")}
+          </Button>
           <Button
             type="primary"
             icon={<PlusOutlined />}

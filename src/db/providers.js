@@ -23,6 +23,16 @@ export function getAllProviders() {
 }
 
 /**
+ * 根据名称获取提供商
+ * @param {string} name
+ * @returns {Object|null}
+ */
+export function getProviderByName(name) {
+  const db = getDatabase();
+  return db.prepare("SELECT * FROM providers WHERE name = ?").get(name);
+}
+
+/**
  * 获取提供商（通过 ID）
  * @param {number} id
  * @returns {Object|null}
@@ -500,6 +510,7 @@ export default {
   getAllProviders,
   getProviderById,
   getProviderByUuid,
+  getProviderByName,
   getAvailableProviders,
   createProvider,
   updateProvider,

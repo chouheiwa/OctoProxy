@@ -31,16 +31,50 @@ OctoProxy is a multi-account API proxy service that exposes various AI service c
 
 ### Using Docker (Recommended)
 
+#### Option 1: Pull from GitHub Container Registry (Fastest)
+
+```bash
+# Create data directories
+mkdir -p data configs
+
+# Run container
+docker run -d \
+  --name octo-proxy \
+  -p 9091:9091 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/configs:/app/configs \
+  --restart unless-stopped \
+  ghcr.io/chouheiwa/octoproxy:latest
+```
+
+#### Option 2: Using Docker Compose
+
 ```bash
 # Clone the project
-git clone https://github.com/your-username/octo-proxy.git
-cd octo-proxy
+git clone https://github.com/chouheiwa/OctoProxy.git
+cd OctoProxy
 
 # Start the service
 docker-compose up -d
 
 # View logs
 docker-compose logs -f
+```
+
+#### Available Image Tags
+
+| Tag | Description |
+|-----|-------------|
+| `latest` | Latest stable release |
+| `v1.0.0` | Specific version |
+| `main` | Latest main branch build |
+
+```bash
+# Pull specific version
+docker pull ghcr.io/chouheiwa/octoproxy:v1.0.0
+
+# Pull latest
+docker pull ghcr.io/chouheiwa/octoproxy:latest
 ```
 
 After the service starts, visit http://localhost:9091 to access the admin interface.
@@ -56,8 +90,8 @@ After the service starts, visit http://localhost:9091 to access the admin interf
 
 ```bash
 # Clone the project
-git clone https://github.com/your-username/octo-proxy.git
-cd octo-proxy
+git clone https://github.com/chouheiwa/OctoProxy.git
+cd OctoProxy
 
 # Install backend dependencies
 npm install
@@ -267,13 +301,29 @@ npm run electron:build:linux
 
 ## Docker Deployment
 
+### Using Pre-built Image (Recommended)
+
+```bash
+# Create data directories
+mkdir -p data configs
+
+# Run container
+docker run -d \
+  --name octo-proxy \
+  -p 9091:9091 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/configs:/app/configs \
+  --restart unless-stopped \
+  ghcr.io/chouheiwa/octoproxy:latest
+```
+
 ### Using Docker Compose
 
 ```bash
 docker-compose up -d
 ```
 
-### Manual Build
+### Build from Source
 
 ```bash
 # Build image
@@ -291,8 +341,18 @@ docker run -d \
 
 ### Data Persistence
 
-- `/app/data` - SQLite database files
-- `/app/configs` - Configuration files
+| Volume | Description |
+|--------|-------------|
+| `/app/data` | SQLite database files |
+| `/app/configs` | Configuration files |
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `9091` | Service port |
+| `HOST` | `0.0.0.0` | Bind address |
+| `NODE_ENV` | `production` | Environment mode |
 
 ## FAQ
 

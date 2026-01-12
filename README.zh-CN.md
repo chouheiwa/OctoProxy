@@ -31,16 +31,50 @@ OctoProxy 是一个多账户 API 代理服务，将多种 AI 服务的能力通�
 
 ### 使用 Docker (推荐)
 
+#### 方式一：直接拉取镜像（最快）
+
+```bash
+# 创建数据目录
+mkdir -p data configs
+
+# 运行容器
+docker run -d \
+  --name octo-proxy \
+  -p 9091:9091 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/configs:/app/configs \
+  --restart unless-stopped \
+  ghcr.io/chouheiwa/octoproxy:latest
+```
+
+#### 方式二：使用 Docker Compose
+
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/octo-proxy.git
-cd octo-proxy
+git clone https://github.com/chouheiwa/OctoProxy.git
+cd OctoProxy
 
 # 启动服务
 docker-compose up -d
 
 # 查看日志
 docker-compose logs -f
+```
+
+#### 可用镜像标签
+
+| 标签 | 说明 |
+|------|------|
+| `latest` | 最新稳定版本 |
+| `v1.0.0` | 指定版本 |
+| `main` | 最新 main 分支构建 |
+
+```bash
+# 拉取指定版本
+docker pull ghcr.io/chouheiwa/octoproxy:v1.0.0
+
+# 拉取最新版
+docker pull ghcr.io/chouheiwa/octoproxy:latest
 ```
 
 服务启动后访问 http://localhost:9091 进入管理界面。
@@ -56,8 +90,8 @@ docker-compose logs -f
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/octo-proxy.git
-cd octo-proxy
+git clone https://github.com/chouheiwa/OctoProxy.git
+cd OctoProxy
 
 # 安装后端依赖
 npm install
@@ -267,13 +301,29 @@ npm run electron:build:linux
 
 ## Docker 部署
 
+### 使用预构建镜像（推荐）
+
+```bash
+# 创建数据目录
+mkdir -p data configs
+
+# 运行容器
+docker run -d \
+  --name octo-proxy \
+  -p 9091:9091 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/configs:/app/configs \
+  --restart unless-stopped \
+  ghcr.io/chouheiwa/octoproxy:latest
+```
+
 ### 使用 Docker Compose
 
 ```bash
 docker-compose up -d
 ```
 
-### 手动构建
+### 从源码构建
 
 ```bash
 # 构建镜像
@@ -291,8 +341,18 @@ docker run -d \
 
 ### 数据持久化
 
-- `/app/data` - SQLite 数据库文件
-- `/app/configs` - 配置文件
+| 挂载路径 | 说明 |
+|----------|------|
+| `/app/data` | SQLite 数据库文件 |
+| `/app/configs` | 配置文件 |
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | `9091` | 服务端口 |
+| `HOST` | `0.0.0.0` | 绑定地址 |
+| `NODE_ENV` | `production` | 运行环境 |
 
 ## 常见问题
 

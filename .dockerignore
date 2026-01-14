@@ -1,16 +1,19 @@
 # 依赖目录
 node_modules/
-web/node_modules/
+app/node_modules/
 
 # 构建产物
-web/dist/
+app/.next/
 static/
+dist-electron/
+release/
 
 # 数据文件
 data/
 *.db
 *.db-wal
 *.db-shm
+*.db-journal
 
 # 配置文件 (可选保留)
 configs/
@@ -46,3 +49,9 @@ Thumbs.db
 Dockerfile
 docker-compose*.yml
 .dockerignore
+
+# Electron 相关
+electron/
+assets/
+scripts/
+electron-builder.yml

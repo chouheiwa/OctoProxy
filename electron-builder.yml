@@ -7,9 +7,7 @@ directories:
   buildResources: assets
 
 files:
-  - src/**/*
   - electron/**/*
-  - static/**/*
   - package.json
   - "!**/*.map"
   - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
@@ -18,12 +16,20 @@ files:
   - "!**/node_modules/.bin"
 
 extraResources:
-  - from: src/db/migrations
-    to: migrations
+  - from: app/.next/standalone
+    to: app/.next/standalone
     filter:
       - "**/*"
-  - from: static
-    to: static
+  - from: app/.next/static
+    to: app/.next/static
+    filter:
+      - "**/*"
+  - from: app/public
+    to: app/public
+    filter:
+      - "**/*"
+  - from: app/lib/db/migrations
+    to: app/lib/db/migrations
     filter:
       - "**/*"
 

@@ -81,7 +81,7 @@ export function getAppPaths() {
       configDir: path.join(userData, "configs"),
       dataDir: path.join(userData, "data"),
       staticDir: path.join(resources, "static"),
-      migrationsDir: path.join(resources, "migrations"),
+      migrationsDir: path.join(resources, "app", "lib", "db", "migrations"),
       isElectron: true,
       isPackaged: true,
     };
@@ -92,7 +92,7 @@ export function getAppPaths() {
       configDir: path.join(projectRoot, "configs"),
       dataDir: path.join(projectRoot, "data"),
       staticDir: path.join(projectRoot, "static"),
-      migrationsDir: path.join(projectRoot, "src", "db", "migrations"),
+      migrationsDir: path.join(projectRoot, "app", "lib", "db", "migrations"),
       isElectron: true,
       isPackaged: false,
     };
@@ -171,11 +171,67 @@ async function startBackendServer(port) {
   try {
     // 设置端口环境变量，供后端使用
     process.env.PORT = String(port);
+    process.env.HOSTNAME = '0.0.0.0';
     currentPort = port;
 
-    // 动态导入后端入口
-    const backend = await import("../src/index.js");
-    console.log(`[Electron] Backend server started on port ${port}`);
+    if (app.isPackaged) {
+      // 生产模式：启动 Next.js standalone 服务器
+      const standaloneServerPath = path.join(
+        process.resourcesPath,
+        'app',
+        '.next',
+        'standalone',
+        'server.js'
+      );
+
+      console.log(`[Electron] Starting Next.js standalone server from: ${standaloneServerPath}`);
+
+      // 设置 Next.js 所需的环境变量
+      process.env.NODE_ENV = 'production';
+
+      // 动态导入 standalone 服务器
+      await import(standaloneServerPath);
+      console.log(`[Electron] Next.js standalone server started on port ${port}`);
+    } else {
+      // 开发模式：启动 Next.js dev 服务器
+      const { spawn } = await import('child_process');
+      const appDir = path.join(__dirname, '..', 'app');
+
+      console.log(`[Electron] Starting Next.js dev server in: ${appDir}`);
+
+      // 启动 next dev 进程
+      const nextProcess = spawn('npm', ['run', 'dev'], {
+        cwd: appDir,
+        env: {
+          ...process.env,
+          PORT: String(port),
+          FORCE_COLOR: '1',
+        },
+        shell: true,
+      });
+
+      // 监听输出
+      nextProcess.stdout.on('data', (data) => {
+        console.log(`[Next.js] ${data.toString().trim()}`);
+      });
+
+      nextProcess.stderr.on('data', (data) => {
+        console.error(`[Next.js Error] ${data.toString().trim()}`);
+      });
+
+      nextProcess.on('error', (error) => {
+        console.error('[Electron] Failed to start Next.js dev server:', error);
+      });
+
+      nextProcess.on('close', (code) => {
+        console.log(`[Electron] Next.js dev server exited with code ${code}`);
+      });
+
+      // 保存进程引用，以便退出时关闭
+      global.nextProcess = nextProcess;
+
+      console.log(`[Electron] Next.js dev server process started (PID: ${nextProcess.pid})`);
+    }
   } catch (error) {
     console.error("[Electron] Failed to start backend server:", error);
     throw error;
@@ -274,6 +330,22 @@ function registerIpcHandlers() {
   // 关闭 OAuth 窗口
   ipcMain.handle("close-oauth-window", async (event, sessionId) => {
     return closeOAuthWindow(sessionId);
+  });
+
+  // 扫描 Kiro tokens
+  ipcMain.handle("scan-kiro-tokens", async () => {
+    try {
+      const { scanAllTokens } = await import("./utils/token-scanner.js");
+      const result = await scanAllTokens();
+      return result;
+    } catch (error) {
+      console.error("[Electron] Failed to scan tokens:", error);
+      return {
+        success: false,
+        tokens: [],
+        errors: [{ path: "scan", error: error.message }]
+      };
+    }
   });
 }
 
@@ -442,8 +514,10 @@ app.whenReady().then(async () => {
   // 启动后端服务
   await startBackendServer(resolvedPort);
 
-  // 等待后端启动
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  // 等待后端启动（Next.js 需要更长的启动时间）
+  const startupWaitTime = app.isPackaged ? 2000 : 5000; // 生产2秒，开发5秒
+  console.log(`[Electron] Waiting ${startupWaitTime}ms for server to start...`);
+  await new Promise((resolve) => setTimeout(resolve, startupWaitTime));
 
   // 创建窗口
   createWindow();
@@ -483,6 +557,12 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   isQuitting = true;
   destroyTray();
+
+  // 关闭 Next.js dev 进程（开发模式）
+  if (global.nextProcess && !global.nextProcess.killed) {
+    console.log('[Electron] Shutting down Next.js dev server...');
+    global.nextProcess.kill();
+  }
 });
 
 // 防止多实例

@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   closeOAuthWindow: (sessionId) =>
     ipcRenderer.invoke("close-oauth-window", sessionId),
 
+  // Token 扫描相关
+  scanKiroTokens: () => ipcRenderer.invoke("scan-kiro-tokens"),
+
   // 监听更新事件
   onUpdateAvailable: (callback) => {
     ipcRenderer.on("update-available", (event, info) => callback(info));

@@ -5,6 +5,7 @@ node_modules/
 dist/
 out/
 build/
+app/.next/
 
 # Electron build outputs
 release/
@@ -27,7 +28,7 @@ data/
 # Config files (may contain sensitive data)
 configs/
 
-# Static files (generated from web build)
+# Static files (generated from build)
 static/
 
 # Logs
@@ -61,7 +62,12 @@ tmp/
 temp/
 *.tmp
 
-# Package manager locks (keep one, ignore others if needed)
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
+# Next.js
+app/.next/
+app/out/
+
+# Turbopack
+.turbo/
+
+# Vercel
+.vercel/

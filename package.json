@@ -4,17 +4,20 @@
   "description": "OctoProxy - Multi-account API proxy service with OpenAI and Claude protocol support",
   "type": "module",
   "main": "electron/main.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "electron": "npm run build:frontend && electron .",
-    "electron:dev": "npm run build:frontend && cross-env NODE_ENV=development electron .",
-    "electron:build": "npm run build:frontend && electron-builder",
-    "electron:build:mac": "npm run build:frontend && electron-builder --mac",
-    "electron:build:win": "npm run build:frontend && electron-builder --win",
-    "electron:build:linux": "npm run build:frontend && electron-builder --linux",
-    "build:frontend": "cd web && npm run build && cd .. && npm run copy:static",
-    "copy:static": "node scripts/copy-static.js",
+    "dev": "cd app && npm run dev",
+    "build": "cd app && npm run build",
+    "start": "cd app && npm run start",
+    "lint": "cd app && npm run lint",
+    "electron": "electron .",
+    "electron:dev": "cross-env NODE_ENV=development electron .",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:mac": "npm run build && electron-builder --mac",
+    "electron:build:win": "npm run build && electron-builder --win",
+    "electron:build:linux": "npm run build && electron-builder --linux",
     "generate:icons": "node scripts/generate-icons.js",
     "postinstall": "electron-builder install-app-deps"
   },
@@ -29,7 +32,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.6.0",
     "axios": "^1.7.9",
     "uuid": "^11.0.5",
     "@anthropic-ai/tokenizer": "^0.0.4",
@@ -37,8 +40,7 @@
     "auto-launch": "^5.0.6"
   },
   "devDependencies": {
-    "nodemon": "^3.1.9",
-    "electron": "^33.2.1",
+    "electron": "^39.2.7",
     "electron-builder": "^25.1.8",
     "cross-env": "^7.0.3"
   },

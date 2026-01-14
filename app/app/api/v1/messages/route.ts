@@ -9,6 +9,7 @@ import { incrementApiKeyUsage } from '@/lib/db/api-keys'
 import { executeWithRetry, executeStream } from '@/lib/pool/manager'
 import * as claudeConverter from '@/lib/converters/claude'
 import { KIRO_MODELS } from '@/lib/kiro/constants'
+import { getConfig } from '@/lib/config'
 
 export async function POST(request: NextRequest) {
   // 认证
@@ -73,6 +74,20 @@ export async function POST(request: NextRequest) {
   // 转换消息格式
   const kiroMessages = claudeConverter.convertMessagesToKiro(messages, system)
 
+  // 获取配置中的 system prompt
+  const config = getConfig()
+  const configSystemPrompt = config.systemPrompt || ''
+
+  // 合并 system prompt：配置的 system prompt + 请求中的 system prompt
+  let finalSystemPrompt = ''
+  if (configSystemPrompt && system) {
+    finalSystemPrompt = `${configSystemPrompt}\n\n${system}`
+  } else if (configSystemPrompt) {
+    finalSystemPrompt = configSystemPrompt
+  } else if (system) {
+    finalSystemPrompt = system
+  }
+
   // 构建选项
   const options: any = { max_tokens }
   if (temperature !== undefined) options.temperature = temperature
@@ -81,10 +96,14 @@ export async function POST(request: NextRequest) {
   incrementApiKeyUsage(auth.apiKey.id)
 
   // 构建请求体
-  const requestBody = {
+  const requestBody: any = {
     messages: kiroMessages,
-    system,
     ...options,
+  }
+
+  // 如果有 system prompt，添加到请求中
+  if (finalSystemPrompt) {
+    requestBody.system = finalSystemPrompt
   }
 
   if (stream) {

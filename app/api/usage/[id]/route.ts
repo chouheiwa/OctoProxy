@@ -107,8 +107,8 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid credentials format' }, { status: 400 })
     }
 
-    // 创建服务实例并获取用量
-    const service = new KiroService(credentials, provider.region)
+    // 创建服务实例并获取用量（合并 region 到 credentials）
+    const service = new KiroService({ ...credentials, region: provider.region })
     await service.initialize()
     const rawUsage = await service.getUsageLimits()
     const usage = formatKiroUsage(rawUsage)
@@ -138,7 +138,9 @@ export async function POST(
     }
 
     // 保存用量缓存到数据库
-    updateProviderUsageData(provider.id, usage)
+    if (usage) {
+      updateProviderUsageData(provider.id, usage)
+    }
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateAdmin } from '@/lib/middleware/auth'
-import { completeOAuth } from '@/lib/kiro/oauth'
+import { getSessionStatus } from '@/lib/kiro/oauth'
+import { createProvider } from '@/lib/db/providers'
 
 /**
  * POST /api/oauth/complete - 完成 OAuth 认证流程
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { sessionId } = body
+    const { sessionId, name, checkHealth = true } = body
 
     if (!sessionId) {
       return NextResponse.json(
@@ -22,9 +23,53 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const result = await completeOAuth(sessionId)
+    // 获取 OAuth 会话状态
+    const session = getSessionStatus(sessionId)
+    if (!session) {
+      return NextResponse.json(
+        { success: false, error: 'Session not found' },
+        { status: 404 }
+      )
+    }
 
-    return NextResponse.json({ success: true, ...result })
+    if (session.status !== 'completed') {
+      return NextResponse.json(
+        { success: false, error: `Session not completed, status: ${session.status}` },
+        { status: 400 }
+      )
+    }
+
+    if (!session.credentials) {
+      return NextResponse.json(
+        { success: false, error: 'No credentials found in session' },
+        { status: 400 }
+      )
+    }
+
+    // 创建 Provider
+    const provider = createProvider({
+      name: name || `OAuth Provider`,
+      region: session.credentials.region || 'us-east-1',
+      credentials: session.credentials,
+      checkHealth,
+    })
+
+    if (!provider) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create provider' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      provider: {
+        id: provider.id,
+        uuid: provider.uuid,
+        name: provider.name,
+        region: provider.region,
+      },
+    })
   } catch (error: any) {
     console.error('[API] Complete OAuth error:', error)
     return NextResponse.json(

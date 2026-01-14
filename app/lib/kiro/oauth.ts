@@ -1,6 +1,6 @@
 /**
  * Kiro OAuth 认证模块
- * 支持 Social Auth (Google/GitHub) 和 Builder ID 两种认证方式
+ * 支持 Social Auth (Google/GitHub)、Builder ID 和 IAM Identity Center 三种认证方式
  */
 
 import http from "http";
@@ -26,7 +26,7 @@ export interface OAuthConfig {
  */
 interface OAuthSession {
   sessionId: string;
-  type: "social" | "builder-id";
+  type: "social" | "builder-id" | "identity-center";
   provider?: string;
   region: string;
   codeVerifier?: string;
@@ -44,6 +44,8 @@ interface OAuthSession {
   credentials?: any;
   resolve?: (value: any) => void;
   reject?: (reason: any) => void;
+  // IAM Identity Center 特定字段
+  startUrl?: string;
 }
 
 /**
@@ -297,6 +299,173 @@ export async function startSocialAuth(
 }
 
 /**
+ * 构建 IAM Identity Center OIDC 端点
+ */
+function buildIdCOIDCEndpoint(region: string): string {
+  return `https://oidc.${region}.amazonaws.com`;
+}
+
+/**
+ * 支持的 IAM Identity Center 区域列表
+ */
+export const SUPPORTED_IDC_REGIONS = [
+  "us-east-1",
+  "us-east-2",
+  "us-west-2",
+  "ap-south-1",
+  "ap-northeast-1",
+  "ap-northeast-2",
+  "ap-southeast-1",
+  "ap-southeast-2",
+  "ca-central-1",
+  "eu-central-1",
+  "eu-west-1",
+  "eu-west-2",
+  "eu-west-3",
+  "eu-north-1",
+  "sa-east-1",
+];
+
+/**
+ * 验证 Start URL 格式
+ */
+export function validateStartUrl(startUrl: string): boolean {
+  try {
+    const url = new URL(startUrl);
+    // IAM Identity Center URL 通常是 https://d-xxxxxxxxx.awsapps.com/start 格式
+    // 或者自定义域名
+    return url.protocol === "https:" && url.pathname.includes("/start");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 启动 IAM Identity Center 设备授权流程
+ */
+export async function startIdCAuth(
+  startUrl: string,
+  region: string = "us-east-1"
+): Promise<{
+  sessionId: string;
+  authUrl: string;
+  userCode: string;
+  deviceCode: string;
+  expiresIn: number;
+}> {
+  // 验证输入
+  if (!validateStartUrl(startUrl)) {
+    throw new Error(
+      "Invalid Start URL format. Expected format: https://d-xxxxxxxxx.awsapps.com/start"
+    );
+  }
+
+  if (!SUPPORTED_IDC_REGIONS.includes(region)) {
+    throw new Error(
+      `Unsupported region: ${region}. Supported regions: ${SUPPORTED_IDC_REGIONS.join(", ")}`
+    );
+  }
+
+  const sessionId = crypto.randomUUID();
+  const oidcEndpoint = buildIdCOIDCEndpoint(region);
+
+  try {
+    // 1. 注册 OIDC 客户端 (使用用户提供的 startUrl)
+    const regResponse = await fetch(`${oidcEndpoint}/client/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "KiroIDE",
+      },
+      body: JSON.stringify({
+        clientName: "KiroIDE",
+        clientType: "public",
+        scopes: KIRO_OAUTH_CONFIG.scopes,
+        grantTypes: [
+          "urn:ietf:params:oauth:grant-type:device_code",
+          "refresh_token",
+        ],
+      }),
+    });
+
+    if (!regResponse.ok) {
+      const errorText = await regResponse.text();
+      throw new Error(
+        `Client registration failed: ${regResponse.status} - ${errorText}`
+      );
+    }
+
+    const regData = await regResponse.json();
+    const { clientId, clientSecret } = regData;
+
+    // 2. 启动设备授权 (使用用户提供的 startUrl)
+    const authResponse = await fetch(`${oidcEndpoint}/device_authorization`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "KiroIDE",
+      },
+      body: JSON.stringify({
+        clientId,
+        clientSecret,
+        startUrl, // 使用用户提供的 Start URL
+      }),
+    });
+
+    if (!authResponse.ok) {
+      const errorText = await authResponse.text();
+      throw new Error(
+        `Device authorization failed: ${authResponse.status} - ${errorText}`
+      );
+    }
+
+    const authData = await authResponse.json();
+    const {
+      deviceCode,
+      userCode,
+      verificationUri,
+      verificationUriComplete,
+      expiresIn,
+      interval,
+    } = authData;
+
+    // 3. 保存会话信息
+    activeSessions.set(sessionId, {
+      sessionId,
+      type: "identity-center",
+      region,
+      clientId,
+      clientSecret,
+      deviceCode,
+      userCode,
+      interval: interval || 5,
+      expiresAt: Date.now() + expiresIn * 1000,
+      createdAt: Date.now(),
+      status: "pending",
+      startUrl, // 保存用户提供的 Start URL
+      resolve: undefined,
+      reject: undefined,
+    });
+
+    console.log(`[OAuth] Started IAM Identity Center session: ${sessionId}`);
+
+    // 4. 启动后台轮询 (复用 Builder ID 轮询逻辑)
+    pollDeviceToken(sessionId);
+
+    return {
+      sessionId,
+      authUrl: verificationUriComplete || verificationUri,
+      userCode,
+      deviceCode,
+      expiresIn,
+    };
+  } catch (error: any) {
+    console.error("[OAuth] IAM Identity Center auth failed:", error);
+    throw error;
+  }
+}
+
+/**
  * 启动 Builder ID 设备授权流程
  */
 export async function startBuilderIDAuth(
@@ -321,7 +490,7 @@ export async function startBuilderIDAuth(
           "User-Agent": "KiroIDE",
         },
         body: JSON.stringify({
-          clientName: "OctoProxy",
+          clientName: "KiroIDE",
           clientType: "public",
           scopes: KIRO_OAUTH_CONFIG.scopes,
           grantTypes: [
@@ -390,7 +559,7 @@ export async function startBuilderIDAuth(
     console.log(`[OAuth] Started Builder ID session: ${sessionId}`);
 
     // 启动后台轮询
-    pollBuilderIDToken(sessionId);
+    pollDeviceToken(sessionId);
 
     return {
       sessionId,
@@ -488,15 +657,25 @@ async function handleOAuthCallback(result: OAuthCallbackResult): Promise<void> {
 }
 
 /**
- * 轮询 Builder ID Token
+ * 轮询设备授权 Token (支持 Builder ID 和 IAM Identity Center)
  */
-async function pollBuilderIDToken(sessionId: string): Promise<void> {
+async function pollDeviceToken(sessionId: string): Promise<void> {
   const session = activeSessions.get(sessionId);
-  if (!session || session.type !== "builder-id") {
+  if (
+    !session ||
+    (session.type !== "builder-id" && session.type !== "identity-center")
+  ) {
     return;
   }
 
-  const { clientId, clientSecret, deviceCode, interval, expiresAt } = session;
+  const { clientId, clientSecret, deviceCode, interval, expiresAt, type } =
+    session;
+
+  // 根据会话类型确定 OIDC 端点
+  const oidcEndpoint =
+    type === "identity-center"
+      ? buildIdCOIDCEndpoint(session.region)
+      : KIRO_OAUTH_CONFIG.ssoOIDCEndpoint;
 
   const poll = async (): Promise<void> => {
     if (expiresAt && Date.now() > expiresAt) {
@@ -513,42 +692,48 @@ async function pollBuilderIDToken(sessionId: string): Promise<void> {
     }
 
     try {
-      const tokenResponse = await fetch(
-        `${KIRO_OAUTH_CONFIG.ssoOIDCEndpoint}/token`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "User-Agent": "KiroIDE",
-          },
-          body: JSON.stringify({
-            clientId,
-            clientSecret,
-            deviceCode,
-            grantType: "urn:ietf:params:oauth:grant-type:device_code",
-          }),
+      const tokenResponse = await fetch(`${oidcEndpoint}/token`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "KiroIDE",
         },
-      );
+        body: JSON.stringify({
+          clientId,
+          clientSecret,
+          deviceCode,
+          grantType: "urn:ietf:params:oauth:grant-type:device_code",
+        }),
+      });
 
       if (tokenResponse.ok) {
         const tokenData = await tokenResponse.json();
+
+        // 根据会话类型设置 authMethod
+        const authMethod = type === "identity-center" ? "IdC" : "builder-id";
+        const startUrl =
+          type === "identity-center"
+            ? session.startUrl!
+            : KIRO_OAUTH_CONFIG.builderIDStartURL;
 
         session.status = "completed";
         session.credentials = {
           accessToken: tokenData.accessToken,
           refreshToken: tokenData.refreshToken,
           expiresAt: new Date(
-            Date.now() + (tokenData.expiresIn || 3600) * 1000,
+            Date.now() + (tokenData.expiresIn || 3600) * 1000
           ).toISOString(),
-          authMethod: "builder-id",
+          authMethod,
           clientId,
           clientSecret,
           region: session.region,
-          startUrl: KIRO_OAUTH_CONFIG.builderIDStartURL,
+          startUrl,
           ssoRegion: session.region,
         };
 
-        console.log(`[OAuth] Builder ID completed for session: ${sessionId}`);
+        const typeName =
+          type === "identity-center" ? "IAM Identity Center" : "Builder ID";
+        console.log(`[OAuth] ${typeName} completed for session: ${sessionId}`);
 
         if (session.resolve) {
           session.resolve(session.credentials);
@@ -714,9 +899,10 @@ export async function refreshCredentials(
     clientId?: string;
     clientSecret?: string;
     region?: string;
+    startUrl?: string;
   } = {}
 ): Promise<Credentials> {
-  const { clientId, clientSecret, region = "us-east-1" } = options;
+  const { clientId, clientSecret, region = "us-east-1", startUrl } = options;
 
   if (authMethod === "social") {
     const refreshUrl = `https://prod.${region}.auth.desktop.kiro.dev/refreshToken`;
@@ -746,11 +932,11 @@ export async function refreshCredentials(
       startUrl: KIRO_OAUTH_CONFIG.builderIDStartURL,
       ssoRegion: region,
     };
-  } else {
-    // Builder ID
+  } else if (authMethod === "builder-id" || authMethod === "IdC") {
+    // Builder ID 和 IAM Identity Center 使用相同的刷新逻辑
     if (!clientId || !clientSecret) {
       throw new Error(
-        "clientId and clientSecret are required for Builder ID refresh",
+        `clientId and clientSecret are required for ${authMethod} refresh`
       );
     }
 
@@ -776,29 +962,40 @@ export async function refreshCredentials(
 
     const data = await response.json();
 
+    // 根据 authMethod 确定 startUrl
+    const resolvedStartUrl =
+      authMethod === "IdC"
+        ? startUrl || ""
+        : KIRO_OAUTH_CONFIG.builderIDStartURL;
+
     return {
       accessToken: data.accessToken,
       refreshToken: data.refreshToken || refreshToken,
       expiresAt: new Date(
-        Date.now() + (data.expiresIn || 3600) * 1000,
+        Date.now() + (data.expiresIn || 3600) * 1000
       ).toISOString(),
-      authMethod: "builder-id",
+      authMethod, // 保持原有的 authMethod
       clientId,
       clientSecret,
       region,
-      startUrl: KIRO_OAUTH_CONFIG.builderIDStartURL,
+      startUrl: resolvedStartUrl,
       ssoRegion: region,
     };
+  } else {
+    throw new Error(`Unsupported auth method: ${authMethod}`);
   }
 }
 
 export default {
   KIRO_OAUTH_CONFIG,
+  SUPPORTED_IDC_REGIONS,
   generateCodeVerifier,
   generateCodeChallenge,
   generateState,
+  validateStartUrl,
   startSocialAuth,
   startBuilderIDAuth,
+  startIdCAuth,
   waitForAuth,
   getSessionStatus,
   cancelSession,

@@ -139,7 +139,7 @@ function getSystemRuntimeInfo(): { osName: string; nodeVersion: string } {
   const osRelease = os.release();
   const nodeVersion = process.version.replace("v", "");
 
-  let osName = osPlatform;
+  let osName: string = osPlatform;
   if (osPlatform === "win32") osName = `windows#${osRelease}`;
   else if (osPlatform === "darwin") osName = `macos#${osRelease}`;
   else osName = `${osPlatform}#${osRelease}`;
@@ -402,9 +402,11 @@ export class KiroService {
 
     this.axiosInstance = axios.create(axiosConfig);
 
-    const refreshConfig = { ...axiosConfig };
-    refreshConfig.headers = {
-      "Content-Type": KIRO_CONSTANTS.CONTENT_TYPE_JSON,
+    const refreshConfig = {
+      ...axiosConfig,
+      headers: {
+        "Content-Type": KIRO_CONSTANTS.CONTENT_TYPE_JSON,
+      },
     };
     this.axiosSocialRefreshInstance = axios.create(refreshConfig);
 
@@ -482,15 +484,15 @@ export class KiroService {
     if (message == null) return "";
     if (Array.isArray(message)) {
       return message
-        .filter((part) => part.type === "text" && part.text)
-        .map((part) => part.text)
+        .filter((part: any) => part.type === "text" && part.text)
+        .map((part: any) => part.text)
         .join("");
     } else if (typeof message.content === "string") {
       return message.content;
     } else if (Array.isArray(message.content)) {
       return message.content
-        .filter((part) => part.type === "text" && part.text)
-        .map((part) => part.text)
+        .filter((part: any) => part.type === "text" && part.text)
+        .map((part: any) => part.text)
         .join("");
     }
     return String(message.content || message);

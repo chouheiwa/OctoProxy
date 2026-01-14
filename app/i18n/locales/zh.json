@@ -27,7 +27,8 @@
     "logout": "退出登录",
     "check": "检查",
     "yes": "是",
-    "no": "否"
+    "no": "否",
+    "continue": "继续"
   },
   "nav": {
     "dashboard": "仪表盘",
@@ -112,7 +113,11 @@
       "statusExpiredRefreshable": "已过期（可刷新）",
       "statusExpired": "已过期",
       "hasRefreshToken": "有刷新令牌",
-      "expiresAt": "过期时间"
+      "expiresAt": "过期时间",
+      "clientCredentials": "客户端凭据",
+      "clientCredentialsFound": "已关联",
+      "clientCredentialsMissing": "缺失",
+      "notRequired": "不需要"
     },
     "oauth": {
       "title": "通过 OAuth 添加提供商",
@@ -133,7 +138,15 @@
       "completeSetup": "完成提供商设置",
       "authSuccess": "认证成功！请在下方配置您的提供商。",
       "providerName": "提供商名称",
-      "createProvider": "创建提供商"
+      "createProvider": "创建提供商",
+      "identityCenter": "组织身份",
+      "identityCenterDesc": "使用 IAM Identity Center 登录（需要组织配置）",
+      "identityCenterConfig": "IAM Identity Center 配置",
+      "identityCenterInfo": "IAM Identity Center 允许您使用组织身份登录。您需要从组织管理员处获取 Start URL。",
+      "startUrl": "Start URL",
+      "startUrlRequired": "请输入 Start URL",
+      "startUrlInvalid": "无效的 Start URL 格式，应为 https://d-xxxxxxxx.awsapps.com/start",
+      "startUrlPlaceholder": "https://d-xxxxxxxx.awsapps.com/start"
     }
   },
   "apiKeys": {
@@ -238,7 +251,11 @@
     "autoLaunch": "开机自启动",
     "autoLaunchDesc": "系统启动时自动运行应用",
     "autoLaunchEnabled": "已启用开机自启动",
-    "autoLaunchDisabled": "已禁用开机自启动"
+    "autoLaunchDisabled": "已禁用开机自启动",
+    "apiSettings": "API 设置",
+    "systemPrompt": "System Prompt",
+    "systemPromptDesc": "转发请求时自动注入的 System Prompt，会添加到每个请求的 system 字段中",
+    "systemPromptPlaceholder": "输入要注入的 System Prompt..."
   },
   "integration": {
     "title": "集成指南",

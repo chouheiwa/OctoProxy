@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateAdmin } from '@/lib/middleware/auth'
-import { getOAuthSession, cancelOAuthSession } from '@/lib/kiro/oauth'
+import { getSessionStatus, cancelSession } from '@/lib/kiro/oauth'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -18,19 +18,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id: sessionId } = await params
 
   try {
-    const session = getOAuthSession(sessionId)
+    const session = getSessionStatus(sessionId)
     if (!session) {
       return NextResponse.json({ success: false, error: 'Session not found' }, { status: 404 })
     }
 
     return NextResponse.json({
       success: true,
-      id: session.id,
-      status: session.status,
-      provider: session.provider,
-      createdAt: session.createdAt,
-      expiresAt: session.expiresAt,
-      error: session.error,
+      session: {
+        id: session.sessionId,
+        type: session.type,
+        status: session.status,
+        provider: session.provider,
+        userCode: session.userCode,
+        error: session.error,
+        credentials: session.credentials,
+      },
     })
   } catch (error: any) {
     console.error('[API] Get OAuth session error:', error)
@@ -53,7 +56,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { id: sessionId } = await params
 
   try {
-    const success = cancelOAuthSession(sessionId)
+    const success = cancelSession(sessionId)
     if (!success) {
       return NextResponse.json({ success: false, error: 'Session not found' }, { status: 404 })
     }

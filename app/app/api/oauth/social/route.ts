@@ -26,9 +26,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      sessionId: session.id,
+      sessionId: session.sessionId,
       authUrl: session.authUrl,
-      expiresAt: session.expiresAt,
+      state: session.state,
     })
   } catch (error: any) {
     console.error('[API] Start social auth error:', error)

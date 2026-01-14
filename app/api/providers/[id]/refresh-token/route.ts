@@ -45,7 +45,7 @@ export async function POST(
       }
 
       // 创建 KiroService 实例并刷新 token
-      const kiroService = new KiroService(credentials)
+      const kiroService = new KiroService({ ...credentials, region: provider.region })
       const newCredentials = await kiroService.refreshAccessToken()
 
       // 合并新旧凭据（保留其他字段）

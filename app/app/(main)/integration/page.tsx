@@ -248,7 +248,7 @@ export default function Integration() {
           code={`{
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "${getDisplayApiKey()}",
-    "ANTHROPIC_BASE_URL": "${baseUrl}",
+    "ANTHROPIC_BASE_URL": "${baseUrl}/api",
     "ANTHROPIC_MODEL": "claude-sonnet-4-20250514"
   }
 }`}
@@ -267,7 +267,7 @@ export default function Integration() {
           code={`{
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "${getDisplayApiKey()}",
-    "ANTHROPIC_BASE_URL": "${baseUrl}",
+    "ANTHROPIC_BASE_URL": "${baseUrl}/api",
     "ANTHROPIC_MODEL": "claude-opus-4-5",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-opus-4-5",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-opus-4-5",
@@ -295,7 +295,7 @@ export default function Integration() {
                 >
                   <Paragraph>{t("integration.claudeCode.step1Desc")}</Paragraph>
                   <CodeBlock
-                    code={`claude config set --global apiUrl ${baseUrl}`}
+                    code={`claude config set --global apiUrl ${baseUrl}/api`}
                     onCopy={copyToClipboard}
                   />
                 </Card>
@@ -319,7 +319,7 @@ export default function Integration() {
               <Space direction="vertical" style={{ width: "100%" }}>
                 <Paragraph>{t("integration.claudeCode.envVarsDesc")}</Paragraph>
                 <CodeBlock
-                  code={`export ANTHROPIC_BASE_URL="${baseUrl}"
+                  code={`export ANTHROPIC_BASE_URL="${baseUrl}/api"
 export ANTHROPIC_AUTH_TOKEN="${getDisplayApiKey()}"`}
                   onCopy={copyToClipboard}
                 />
@@ -341,18 +341,18 @@ export ANTHROPIC_AUTH_TOKEN="${getDisplayApiKey()}"`}
         <Space direction="vertical" style={{ width: "100%" }}>
           <div>
             <Tag color="green">POST</Tag>
-            <Text code>{baseUrl}/v1/chat/completions</Text>
+            <Text code>{baseUrl}/api/v1/chat/completions</Text>
           </div>
           <div>
             <Tag color="blue">GET</Tag>
-            <Text code>{baseUrl}/v1/models</Text>
+            <Text code>{baseUrl}/api/v1/models</Text>
           </div>
         </Space>
       </Card>
 
       <Card title={t("integration.openai.curlTitle")} size="small">
         <CodeBlock
-          code={`curl ${baseUrl}/v1/chat/completions \\
+          code={`curl ${baseUrl}/api/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${getDisplayApiKey()}" \\
   -d '{
@@ -372,7 +372,7 @@ export ANTHROPIC_AUTH_TOKEN="${getDisplayApiKey()}"`}
 
 client = OpenAI(
     api_key="${getDisplayApiKey()}",
-    base_url="${baseUrl}/v1"
+    base_url="${baseUrl}/api/v1"
 )
 
 response = client.chat.completions.create(
@@ -396,7 +396,7 @@ for chunk in response:
 
 const client = new OpenAI({
   apiKey: '${getDisplayApiKey()}',
-  baseURL: '${baseUrl}/v1',
+  baseURL: '${baseUrl}/api/v1',
 });
 
 const stream = await client.chat.completions.create({
@@ -424,14 +424,14 @@ for await (const chunk of stream) {
         <Space direction="vertical" style={{ width: "100%" }}>
           <div>
             <Tag color="green">POST</Tag>
-            <Text code>{baseUrl}/v1/messages</Text>
+            <Text code>{baseUrl}/api/v1/messages</Text>
           </div>
         </Space>
       </Card>
 
       <Card title={t("integration.claude.curlTitle")} size="small">
         <CodeBlock
-          code={`curl ${baseUrl}/v1/messages \\
+          code={`curl ${baseUrl}/api/v1/messages \\
   -H "Content-Type: application/json" \\
   -H "x-api-key: ${getDisplayApiKey()}" \\
   -H "anthropic-version: 2023-06-01" \\
@@ -453,7 +453,7 @@ for await (const chunk of stream) {
 
 client = anthropic.Anthropic(
     api_key="${getDisplayApiKey()}",
-    base_url="${baseUrl}"
+    base_url="${baseUrl}/api"
 )
 
 with client.messages.stream(
@@ -475,7 +475,7 @@ with client.messages.stream(
 
 const client = new Anthropic({
   apiKey: '${getDisplayApiKey()}',
-  baseURL: '${baseUrl}',
+  baseURL: '${baseUrl}/api',
 });
 
 const stream = await client.messages.stream({
@@ -510,7 +510,7 @@ for await (const event of stream) {
             <li>{t("integration.other.cursorStep3")}</li>
           </ol>
           <CodeBlock
-            code={`Base URL: ${baseUrl}/v1
+            code={`Base URL: ${baseUrl}/api/v1
 API Key: ${getDisplayApiKey()}`}
             onCopy={copyToClipboard}
           />
@@ -526,7 +526,7 @@ API Key: ${getDisplayApiKey()}`}
       "title": "OctoProxy",
       "provider": "openai",
       "model": "kiro",
-      "apiBase": "${baseUrl}/v1",
+      "apiBase": "${baseUrl}/api/v1",
       "apiKey": "${getDisplayApiKey()}"
     }
   ]
@@ -538,7 +538,7 @@ API Key: ${getDisplayApiKey()}`}
       <Card title={t("integration.other.aiderTitle")} size="small">
         <Paragraph>{t("integration.other.aiderDesc")}</Paragraph>
         <CodeBlock
-          code={`export OPENAI_API_BASE="${baseUrl}/v1"
+          code={`export OPENAI_API_BASE="${baseUrl}/api/v1"
 export OPENAI_API_KEY="${getDisplayApiKey()}"
 
 aider --model openai/kiro`}
@@ -549,7 +549,7 @@ aider --model openai/kiro`}
       <Card title={t("integration.other.lobechatTitle")} size="small">
         <Paragraph>{t("integration.other.lobechatDesc")}</Paragraph>
         <CodeBlock
-          code={`API Endpoint: ${baseUrl}/v1
+          code={`API Endpoint: ${baseUrl}/api/v1
 API Key: ${getDisplayApiKey()}
 Model: kiro`}
           onCopy={copyToClipboard}

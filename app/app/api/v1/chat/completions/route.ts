@@ -9,6 +9,7 @@ import { incrementApiKeyUsage } from '@/lib/db/api-keys'
 import { executeWithRetry, executeStream } from '@/lib/pool/manager'
 import * as openaiConverter from '@/lib/converters/openai'
 import { KIRO_MODELS } from '@/lib/kiro/constants'
+import { getConfig } from '@/lib/config'
 
 export async function POST(request: NextRequest) {
   // 认证
@@ -61,6 +62,10 @@ export async function POST(request: NextRequest) {
   // 转换消息格式
   const kiroMessages = openaiConverter.convertMessagesToKiro(messages)
 
+  // 获取配置中的 system prompt
+  const config = getConfig()
+  const configSystemPrompt = config.systemPrompt || ''
+
   // 构建选项
   const options: any = {}
   if (max_tokens) options.max_tokens = max_tokens
@@ -69,10 +74,15 @@ export async function POST(request: NextRequest) {
   // 增加 API Key 使用量
   incrementApiKeyUsage(auth.apiKey.id)
 
-  // 构建请求体
-  const requestBody = {
+  // 构建请求体，注入 system prompt
+  const requestBody: any = {
     messages: kiroMessages,
     ...options,
+  }
+
+  // 如果配置了 system prompt，添加到请求中
+  if (configSystemPrompt) {
+    requestBody.system = configSystemPrompt
   }
 
   if (stream) {

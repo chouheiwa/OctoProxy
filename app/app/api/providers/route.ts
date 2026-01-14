@@ -65,6 +65,13 @@ export async function POST(request: NextRequest) {
       checkModelName,
     })
 
+    if (!provider) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create provider' },
+        { status: 500 }
+      )
+    }
+
     // 不返回凭据信息
     const { credentials: _, ...safeProvider } = provider
 

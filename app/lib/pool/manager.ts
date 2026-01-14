@@ -44,7 +44,7 @@ type StreamFn<T> = (service: KiroService, provider: ProviderWithCredentials) => 
 /**
  * 带凭据的提供商接口
  */
-export interface ProviderWithCredentials extends Provider {
+export interface ProviderWithCredentials extends Omit<Provider, 'credentials'> {
   credentials: KiroCredentials;
 }
 
@@ -525,7 +525,8 @@ export async function syncProvidersUsage(): Promise<UsageSyncResult> {
       const usage = formatKiroUsage(rawUsage);
 
       // 检查并保存刷新后的凭据
-      checkAndSaveRefreshedCredentials(service, provider as ProviderWithCredentials, credentials);
+      const providerWithCreds: ProviderWithCredentials = { ...provider, credentials };
+      checkAndSaveRefreshedCredentials(service, providerWithCreds, credentials);
 
       // 更新账户邮箱
       if (usage?.user?.email && usage.user.email !== provider.account_email) {

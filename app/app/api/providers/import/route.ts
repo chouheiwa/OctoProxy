@@ -47,11 +47,17 @@ export async function POST(request: NextRequest) {
           name: providerData.name,
           region: providerData.region || 'us-east-1',
           credentials,
-          account_email: providerData.account_email,
-          check_health: providerData.check_health || 0,
-          check_model_name: providerData.check_model_name,
-          is_disabled: providerData.is_disabled || 0,
+          checkHealth: providerData.check_health === 1 || providerData.checkHealth === true,
+          checkModelName: providerData.check_model_name || providerData.checkModelName,
         })
+
+        if (!provider) {
+          results.failed.push({
+            name: providerData.name || 'Unknown',
+            error: 'Failed to create provider',
+          })
+          continue
+        }
 
         results.success.push({
           id: provider.id,

@@ -9,7 +9,7 @@ type ProviderCredentials = string | Record<string, any>;
 /**
  * 提供商接口
  */
-interface Provider {
+export interface Provider {
     id: number;
     uuid: string;
     name: string | null;

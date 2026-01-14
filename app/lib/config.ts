@@ -26,6 +26,7 @@ export interface Config {
   providerStrategy: ProviderStrategy
   usageSyncIntervalMinutes: number
   debug: boolean
+  systemPrompt: string
 }
 
 // 默认配置
@@ -43,6 +44,7 @@ const defaultConfig: Config = {
   providerStrategy: 'lru',
   usageSyncIntervalMinutes: 10,
   debug: false,
+  systemPrompt: '',
 }
 
 let config: Config | null = null

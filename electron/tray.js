@@ -4,6 +4,7 @@
 
 import { Tray, Menu, nativeImage } from "electron";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,17 +18,29 @@ let tray = null;
  * @param {Function} quitApp - 退出应用的回调
  */
 export function createTray(showWindow, quitApp) {
-  // 托盘图标路径
-  const iconPath = path.join(__dirname, "../assets/tray-icon.png");
-
   // 创建托盘图标
   let icon;
   try {
-    icon = nativeImage.createFromPath(iconPath);
-    // macOS 需要设置为 template 图标
     if (process.platform === "darwin") {
-      icon = icon.resize({ width: 16, height: 16 });
-      icon.setTemplateImage(true);
+      // macOS: 优先使用 Template 图标（单色），否则使用普通图标
+      const templateIconPath = path.join(__dirname, "../assets/tray-iconTemplate.png");
+      const normalIconPath = path.join(__dirname, "../assets/tray-icon.png");
+
+      // 检查是否存在 Template 图标
+      if (fs.existsSync(templateIconPath)) {
+        icon = nativeImage.createFromPath(templateIconPath);
+        icon = icon.resize({ width: 18, height: 18 });
+        icon.setTemplateImage(true);
+      } else {
+        // 使用普通图标，不设置为 template（保持彩色）
+        icon = nativeImage.createFromPath(normalIconPath);
+        icon = icon.resize({ width: 18, height: 18 });
+        // 不调用 setTemplateImage，保持原始颜色
+      }
+    } else {
+      // Windows/Linux: 使用普通图标
+      const iconPath = path.join(__dirname, "../assets/tray-icon.png");
+      icon = nativeImage.createFromPath(iconPath);
     }
   } catch (error) {
     console.error("[Tray] Failed to load icon:", error);

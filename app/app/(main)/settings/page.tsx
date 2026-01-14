@@ -15,6 +15,7 @@ import {
   message,
   Descriptions,
   Switch,
+  Input,
 } from "antd";
 import {
   SettingOutlined,
@@ -75,6 +76,7 @@ interface Config {
   host?: string;
   sessionExpireHours?: number;
   dbPath?: string;
+  systemPrompt?: string;
 }
 
 interface UpdateStatus {
@@ -105,6 +107,20 @@ export default function Settings() {
     }
   }, []);
 
+  // 当 config 加载完成且不在 loading 状态时，设置表单值
+  useEffect(() => {
+    if (config && !loading) {
+      form.setFieldsValue({
+        providerStrategy: config.providerStrategy || "lru",
+        usageSyncIntervalMinutes: config.usageSyncIntervalMinutes || 10,
+        healthCheckIntervalMinutes: config.healthCheckIntervalMinutes || 10,
+        maxErrorCount: config.maxErrorCount || 3,
+        requestMaxRetries: config.requestMaxRetries || 3,
+        systemPrompt: config.systemPrompt || "",
+      });
+    }
+  }, [config, loading, form]);
+
   const loadConfig = async () => {
     try {
       setLoading(true);
@@ -112,15 +128,6 @@ export default function Settings() {
       const response = await settingsApi.getConfig();
       if (response.success) {
         setConfig(response.config);
-        form.setFieldsValue({
-          providerStrategy: response.config.providerStrategy || "lru",
-          usageSyncIntervalMinutes:
-            response.config.usageSyncIntervalMinutes || 10,
-          healthCheckIntervalMinutes:
-            response.config.healthCheckIntervalMinutes || 10,
-          maxErrorCount: response.config.maxErrorCount || 3,
-          requestMaxRetries: response.config.requestMaxRetries || 3,
-        });
       }
     } catch (err: any) {
       setError(err.message || t("errors.loadFailed"));
@@ -291,7 +298,7 @@ export default function Settings() {
       {/* Electron 设置 */}
       {isElectron() && (
         <Card style={{ marginBottom: 16 }}>
-          <Divider orientation="left">
+          <Divider titlePlacement="left">
             <RocketOutlined style={{ marginRight: 8 }} />
             {t("settings.appSettings")}
           </Divider>
@@ -366,7 +373,7 @@ export default function Settings() {
 
       <Card>
         <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Divider orientation="left">{t("settings.providerStrategy")}</Divider>
+          <Divider titlePlacement="left">{t("settings.providerStrategy")}</Divider>
 
           <Form.Item
             name="providerStrategy"
@@ -391,7 +398,7 @@ export default function Settings() {
             </Select>
           </Form.Item>
 
-          <Divider orientation="left">{t("settings.syncSettings")}</Divider>
+          <Divider titlePlacement="left">{t("settings.syncSettings")}</Divider>
 
           <Form.Item
             name="usageSyncIntervalMinutes"
@@ -419,7 +426,7 @@ export default function Settings() {
             />
           </Form.Item>
 
-          <Divider orientation="left">{t("settings.errorHandling")}</Divider>
+          <Divider titlePlacement="left">{t("settings.errorHandling")}</Divider>
 
           <Form.Item
             name="maxErrorCount"
@@ -435,6 +442,20 @@ export default function Settings() {
             extra={t("settings.requestMaxRetriesDesc")}
           >
             <InputNumber min={1} max={10} style={{ width: 200 }} />
+          </Form.Item>
+
+          <Divider titlePlacement="left">{t("settings.apiSettings")}</Divider>
+
+          <Form.Item
+            name="systemPrompt"
+            label={t("settings.systemPrompt")}
+            extra={t("settings.systemPromptDesc")}
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder={t("settings.systemPromptPlaceholder")}
+              style={{ maxWidth: 600 }}
+            />
           </Form.Item>
 
           <Form.Item style={{ marginTop: 24 }}>

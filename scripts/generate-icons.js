@@ -125,6 +125,37 @@ console.log("\n🔔 生成托盘图标 (22x22)...");
 const trayIcon = path.join(assetsDir, "tray-icon.png");
 resizeImage(SOURCE_ICON, trayIcon, 22);
 
+// 2.1 生成 macOS Template 托盘图标 (18x18, 单色)
+console.log("\n🍎 生成 macOS Template 托盘图标...");
+const trayTemplateIcon = path.join(assetsDir, "tray-iconTemplate.png");
+const trayTemplateIcon2x = path.join(assetsDir, "tray-iconTemplate@2x.png");
+
+// macOS Template 图标需要是黑色图形 + 透明背景
+// 将彩色图标转换为：保留形状作为黑色，背景透明
+if (hasMagick) {
+  run(
+    `magick "${SOURCE_ICON}" -resize 18x18 -alpha extract -negate -background none -alpha shape "${trayTemplateIcon}"`,
+    "生成 tray-iconTemplate.png (18x18)"
+  );
+  run(
+    `magick "${SOURCE_ICON}" -resize 36x36 -alpha extract -negate -background none -alpha shape "${trayTemplateIcon2x}"`,
+    "生成 tray-iconTemplate@2x.png (36x36)"
+  );
+} else if (hasConvert) {
+  run(
+    `convert "${SOURCE_ICON}" -resize 18x18 -alpha extract -negate -background none -alpha shape "${trayTemplateIcon}"`,
+    "生成 tray-iconTemplate.png (18x18)"
+  );
+  run(
+    `convert "${SOURCE_ICON}" -resize 36x36 -alpha extract -negate -background none -alpha shape "${trayTemplateIcon2x}"`,
+    "生成 tray-iconTemplate@2x.png (36x36)"
+  );
+} else if (hasSips) {
+  // sips 不支持单色转换，只生成普通尺寸
+  console.log("  ⚠️  sips 不支持单色转换，跳过 Template 图标生成");
+  console.log("     建议安装 ImageMagick: brew install imagemagick");
+}
+
 // 3. 生成 Linux 多尺寸图标
 console.log("\n🐧 生成 Linux 图标...");
 const iconsDir = path.join(assetsDir, "icons");
@@ -255,6 +286,10 @@ console.log("\n✅ 图标生成完成！\n");
 console.log("生成的文件：");
 console.log("  - assets/icon.png (512x512, Electron 主图标)");
 console.log("  - assets/tray-icon.png (22x22, 系统托盘)");
+if (fs.existsSync(trayTemplateIcon)) {
+  console.log("  - assets/tray-iconTemplate.png (18x18, macOS 菜单栏)");
+  console.log("  - assets/tray-iconTemplate@2x.png (36x36, macOS Retina)");
+}
 if (fs.existsSync(icnsPath)) {
   console.log("  - assets/icon.icns (macOS)");
 }

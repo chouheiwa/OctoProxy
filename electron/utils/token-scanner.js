@@ -24,9 +24,10 @@ function isTokenExpired(data) {
 /**
  * 检查 token 是否可用（即使过期，但有 refresh token 也算可用）
  * @param {Object} data Token 数据
+ * @param {boolean} hasClientCredentials 是否有 client credentials
  * @returns {boolean}
  */
-function isTokenUsable(data) {
+function isTokenUsable(data, hasClientCredentials = true) {
   const expired = isTokenExpired(data);
 
   // 如果未过期，直接可用
@@ -35,8 +36,18 @@ function isTokenUsable(data) {
   }
 
   // 如果过期了，检查是否有 refresh token
-  // 有 refresh token 的话，系统可以自动刷新，仍然可用
-  return !!(data.refreshToken);
+  if (!data.refreshToken) {
+    return false;
+  }
+
+  // 对于 IdC/builder-id 认证，还需要 client credentials 才能刷新
+  const authMethod = data.authMethod || '';
+  if (authMethod === 'IdC' || authMethod === 'builder-id') {
+    return hasClientCredentials;
+  }
+
+  // social auth 不需要 client credentials
+  return true;
 }
 
 /**
@@ -51,6 +62,42 @@ export function validateTokenData(data) {
   }
 
   return true;
+}
+
+/**
+ * 尝试读取 clientIdHash 对应的 client credentials 文件
+ * @param {string} dirPath 目录路径
+ * @param {string} clientIdHash clientIdHash 值
+ * @returns {Promise<Object|null>} client credentials 或 null
+ */
+async function readClientCredentials(dirPath, clientIdHash) {
+  if (!clientIdHash) {
+    return null;
+  }
+
+  const credentialsPath = path.join(dirPath, `${clientIdHash}.json`);
+
+  try {
+    const content = await fs.readFile(credentialsPath, 'utf-8');
+    const data = JSON.parse(content);
+
+    // 验证必要字段
+    if (data.clientId && data.clientSecret) {
+      return {
+        clientId: data.clientId,
+        clientSecret: data.clientSecret,
+        clientCredentialsExpiresAt: data.expiresAt || null,
+        clientCredentialsSource: credentialsPath
+      };
+    }
+
+    console.warn(`[TokenScanner] Client credentials file missing required fields: ${credentialsPath}`);
+    return null;
+  } catch (err) {
+    // 文件不存在或解析失败
+    console.warn(`[TokenScanner] Cannot read client credentials from ${credentialsPath}:`, err.message);
+    return null;
+  }
 }
 
 /**
@@ -86,14 +133,46 @@ export async function scanDirectory(dirPath, maxDepth = 3) {
 
           // 验证是否为 token 文件
           if (validateTokenData(data)) {
-            tokens.push({
+            // 检查是否需要关联 client credentials
+            let clientCredentials = null;
+            let hasClientCredentials = true;
+            const authMethod = data.authMethod || '';
+
+            // 对于 IdC/builder-id 认证，尝试读取 clientIdHash 对应的文件
+            if (data.clientIdHash && (authMethod === 'IdC' || authMethod === 'builder-id' || !authMethod)) {
+              clientCredentials = await readClientCredentials(dirPath, data.clientIdHash);
+              hasClientCredentials = clientCredentials !== null;
+
+              if (!hasClientCredentials) {
+                console.warn(`[TokenScanner] Missing client credentials for ${entry.name}, clientIdHash: ${data.clientIdHash}`);
+              }
+            }
+
+            // 对于 social auth，不需要 client credentials
+            if (authMethod === 'social') {
+              hasClientCredentials = true;
+            }
+
+            const tokenData = {
               filePath: fullPath,
               fileName: entry.name,
-              data: data,
+              data: {
+                ...data,
+                // 合并 client credentials
+                ...(clientCredentials ? {
+                  clientId: clientCredentials.clientId,
+                  clientSecret: clientCredentials.clientSecret,
+                } : {})
+              },
               isExpired: isTokenExpired(data),
-              isUsable: isTokenUsable(data),
-              isValid: true
-            });
+              isUsable: isTokenUsable(data, hasClientCredentials),
+              isValid: true,
+              hasClientCredentials,
+              clientCredentialsExpiresAt: clientCredentials?.clientCredentialsExpiresAt || null,
+              clientCredentialsSource: clientCredentials?.clientCredentialsSource || null
+            };
+
+            tokens.push(tokenData);
           }
         } catch (err) {
           console.warn(`[TokenScanner] Failed to parse ${fullPath}:`, err.message);

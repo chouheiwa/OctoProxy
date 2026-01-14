@@ -32,6 +32,7 @@ import {
   ImportOutlined,
   SearchOutlined,
   ReloadOutlined,
+  BankOutlined,
 } from "@ant-design/icons";
 
 const { Title, Text } = Typography;
@@ -67,9 +68,14 @@ interface DetectedToken {
     refreshToken?: string;
     expiresAt?: string;
     expiration?: string;
+    authMethod?: string;
+    clientId?: string;
+    clientSecret?: string;
   };
   isExpired: boolean;
   isUsable: boolean;
+  hasClientCredentials?: boolean;
+  clientCredentialsExpiresAt?: string;
 }
 
 declare global {
@@ -104,6 +110,10 @@ export default function ProvidersPage() {
   // Form
   const [form] = Form.useForm();
   const [completeForm] = Form.useForm();
+  const [idcForm] = Form.useForm();
+
+  // IdC states
+  const [idcModalOpen, setIdcModalOpen] = useState(false);
 
   // OAuth states
   const [oauthSessionId, setOauthSessionId] = useState<string | null>(null);
@@ -228,6 +238,46 @@ export default function ProvidersPage() {
         setOauthAuthUrl(response.authUrl);
         setOauthUserCode(response.userCode);
         setOauthStatus(t("providers.oauth.enterCodeDesc"));
+        setOauthModalOpen(false);
+        setProgressModalOpen(true);
+
+        // 在 Electron 环境下使用无痕窗口
+        if (window.electronAPI?.openOAuthWindow) {
+          await window.electronAPI.openOAuthWindow(
+            response.sessionId,
+            response.authUrl,
+          );
+        } else {
+          window.open(response.authUrl, "_blank");
+        }
+      } else {
+        message.error(response.error || t("errors.authFailed", { error: "" }));
+      }
+    } catch (err: any) {
+      message.error(err.message || t("errors.authFailed", { error: "" }));
+    } finally {
+      setOauthLoading(false);
+    }
+  };
+
+  const handleStartIdC = async (values: { startUrl: string; region: string }) => {
+    setOauthLoading(true);
+    try {
+      const res = await fetch('/api/oauth/identity-center', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      });
+      const response = await res.json();
+      if (!res.ok) {
+        throw new Error(response.error || 'OAuth failed');
+      }
+      if (response.success) {
+        setOauthSessionId(response.sessionId);
+        setOauthAuthUrl(response.authUrl);
+        setOauthUserCode(response.userCode);
+        setOauthStatus(t("providers.oauth.enterCodeDesc"));
+        setIdcModalOpen(false);
         setOauthModalOpen(false);
         setProgressModalOpen(true);
 
@@ -886,7 +936,11 @@ export default function ProvidersPage() {
                   </div>
                 </Space>
               </Card>
-              <Card hoverable onClick={handleStartBuilderID}>
+              <Card
+                hoverable
+                style={{ marginBottom: 12 }}
+                onClick={handleStartBuilderID}
+              >
                 <Space>
                   <CloudOutlined style={{ fontSize: 24, color: "#ff9900" }} />
                   <div>
@@ -901,6 +955,24 @@ export default function ProvidersPage() {
                       style={{ fontSize: 12, color: "#faad14" }}
                     >
                       {t("providers.oauth.awsBuilderIDWarning")}
+                    </Text>
+                  </div>
+                </Space>
+              </Card>
+              <Card
+                hoverable
+                onClick={() => {
+                  setOauthModalOpen(false);
+                  setIdcModalOpen(true);
+                }}
+              >
+                <Space>
+                  <BankOutlined style={{ fontSize: 24, color: "#1890ff" }} />
+                  <div>
+                    <Text strong>{t("providers.oauth.identityCenter")}</Text>
+                    <br />
+                    <Text type="secondary">
+                      {t("providers.oauth.identityCenterDesc")}
                     </Text>
                   </div>
                 </Space>
@@ -1051,6 +1123,22 @@ export default function ProvidersPage() {
               },
             },
             {
+              title: t("providers.tokenPreview.clientCredentials"),
+              key: "clientCredentials",
+              render: (_: any, record: DetectedToken) => {
+                const authMethod = record.data.authMethod || '';
+                // social auth 不需要 client credentials
+                if (authMethod === 'social') {
+                  return <Tag color="default">{t("providers.tokenPreview.notRequired")}</Tag>;
+                }
+                // IdC/builder-id 需要 client credentials
+                if (record.hasClientCredentials) {
+                  return <Tag color="success">{t("providers.tokenPreview.clientCredentialsFound")}</Tag>;
+                }
+                return <Tag color="warning">{t("providers.tokenPreview.clientCredentialsMissing")}</Tag>;
+              },
+            },
+            {
               title: t("providers.tokenPreview.hasRefreshToken"),
               dataIndex: ["data", "refreshToken"],
               key: "hasRefreshToken",
@@ -1085,6 +1173,85 @@ export default function ProvidersPage() {
           pagination={false}
           size="small"
         />
+      </Modal>
+
+      {/* IdC 配置对话框 */}
+      <Modal
+        title={t("providers.oauth.identityCenterConfig")}
+        open={idcModalOpen}
+        onCancel={() => setIdcModalOpen(false)}
+        footer={null}
+        destroyOnClose
+      >
+        {oauthLoading ? (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <Spin size="large" />
+            <p style={{ marginTop: 16 }}>{t("providers.oauth.initializing")}</p>
+          </div>
+        ) : (
+          <Form
+            form={idcForm}
+            layout="vertical"
+            onFinish={handleStartIdC}
+            initialValues={{ region: "us-east-1" }}
+          >
+            <Alert
+              message={t("providers.oauth.identityCenterInfo")}
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Form.Item
+              name="startUrl"
+              label={t("providers.oauth.startUrl")}
+              rules={[
+                {
+                  required: true,
+                  message: t("providers.oauth.startUrlRequired"),
+                },
+                {
+                  pattern: /^https:\/\/.+\/start/,
+                  message: t("providers.oauth.startUrlInvalid"),
+                },
+              ]}
+            >
+              <Input placeholder={t("providers.oauth.startUrlPlaceholder")} />
+            </Form.Item>
+            <Form.Item
+              name="region"
+              label={t("providers.region")}
+              rules={[{ required: true }]}
+            >
+              <Select>
+                <Select.Option value="us-east-1">us-east-1</Select.Option>
+                <Select.Option value="us-east-2">us-east-2</Select.Option>
+                <Select.Option value="us-west-2">us-west-2</Select.Option>
+                <Select.Option value="ap-south-1">ap-south-1</Select.Option>
+                <Select.Option value="ap-northeast-1">ap-northeast-1</Select.Option>
+                <Select.Option value="ap-northeast-2">ap-northeast-2</Select.Option>
+                <Select.Option value="ap-southeast-1">ap-southeast-1</Select.Option>
+                <Select.Option value="ap-southeast-2">ap-southeast-2</Select.Option>
+                <Select.Option value="ca-central-1">ca-central-1</Select.Option>
+                <Select.Option value="eu-central-1">eu-central-1</Select.Option>
+                <Select.Option value="eu-west-1">eu-west-1</Select.Option>
+                <Select.Option value="eu-west-2">eu-west-2</Select.Option>
+                <Select.Option value="eu-west-3">eu-west-3</Select.Option>
+                <Select.Option value="eu-north-1">eu-north-1</Select.Option>
+                <Select.Option value="sa-east-1">sa-east-1</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 0, textAlign: "right" }}>
+              <Space>
+                <Button onClick={() => setIdcModalOpen(false)}>
+                  {t("common.cancel")}
+                </Button>
+                <Button type="primary" htmlType="submit">
+                  {t("common.continue")}
+                </Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        )}
       </Modal>
     </div>
   );

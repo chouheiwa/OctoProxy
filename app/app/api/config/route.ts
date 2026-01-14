@@ -18,6 +18,7 @@ function getDefaultConfig() {
     healthCheckEnabled: false,
     healthCheckIntervalMinutes: 60,
     healthCheckModel: 'claude-sonnet-4-20250514',
+    systemPrompt: '',  // 转发请求时注入的 system prompt
   }
 }
 

@@ -24,7 +24,7 @@ interface ApiKey {
 /**
  * API Key 及用户名
  */
-interface ApiKeyWithUser extends ApiKey {
+export interface ApiKeyWithUser extends ApiKey {
     user_name: string | null;
 }
 
@@ -57,7 +57,7 @@ interface ValidatedApiKey extends ApiKey {
 /**
  * 创建 API Key 返回的完整信息
  */
-interface CreatedApiKey extends ApiKeyWithUser {
+export interface CreatedApiKey extends ApiKeyWithUser {
     key: string;
 }
 

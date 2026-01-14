@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateAdmin } from '@/lib/middleware/auth'
 import { getAllProviders } from '@/lib/db/providers'
-import { KiroService } from '@/lib/kiro/service'
 
 /**
  * GET /api/usage - 获取所有提供商的用量信息
@@ -18,20 +17,36 @@ export async function GET(request: NextRequest) {
 
     for (const provider of providers) {
       // 优先使用缓存的用量数据
-      if (provider.cached_usage_used !== null && provider.cached_usage_limit !== null) {
-        usageList.push({
-          id: provider.id,
-          name: provider.name || `Provider ${provider.id}`,
-          account_email: provider.account_email,
-          usage: {
-            used: provider.cached_usage_used,
-            limit: provider.cached_usage_limit,
-            percent: provider.cached_usage_percent || 0,
-          },
-          exhausted: provider.usage_exhausted === 1,
-          lastSync: provider.last_usage_sync,
-          fromCache: true,
-        })
+      if (provider.cached_usage_data) {
+        try {
+          const cachedUsage = JSON.parse(provider.cached_usage_data)
+          const breakdown = cachedUsage?.usageBreakdown?.[0]
+          const used = breakdown?.currentUsage || 0
+          const limit = breakdown?.usageLimit || 0
+          const percent = limit > 0 ? Math.round((used / limit) * 100) : 0
+          const exhausted = percent >= 100
+
+          usageList.push({
+            id: provider.id,
+            name: provider.name || `Provider ${provider.id}`,
+            account_email: cachedUsage?.user?.email || provider.account_email,
+            usage: { used, limit, percent },
+            exhausted,
+            lastSync: provider.last_usage_sync,
+            fromCache: true,
+          })
+        } catch {
+          // 缓存数据解析失败，返回空数据
+          usageList.push({
+            id: provider.id,
+            name: provider.name || `Provider ${provider.id}`,
+            account_email: provider.account_email,
+            usage: null,
+            exhausted: false,
+            lastSync: null,
+            fromCache: false,
+          })
+        }
       } else {
         // 没有缓存，返回空数据
         usageList.push({

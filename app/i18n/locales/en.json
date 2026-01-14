@@ -27,7 +27,8 @@
     "logout": "Logout",
     "check": "Check",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "continue": "Continue"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -112,7 +113,11 @@
       "statusExpiredRefreshable": "Expired (Refreshable)",
       "statusExpired": "Expired",
       "hasRefreshToken": "Has Refresh Token",
-      "expiresAt": "Expires At"
+      "expiresAt": "Expires At",
+      "clientCredentials": "Client Credentials",
+      "clientCredentialsFound": "Found",
+      "clientCredentialsMissing": "Missing",
+      "notRequired": "Not Required"
     },
     "oauth": {
       "title": "Add Provider via OAuth",
@@ -133,7 +138,15 @@
       "completeSetup": "Complete Provider Setup",
       "authSuccess": "Authentication successful! Configure your provider below.",
       "providerName": "Provider Name",
-      "createProvider": "Create Provider"
+      "createProvider": "Create Provider",
+      "identityCenter": "Organization Identity",
+      "identityCenterDesc": "Sign in with IAM Identity Center (requires organization setup)",
+      "identityCenterConfig": "IAM Identity Center Configuration",
+      "identityCenterInfo": "IAM Identity Center allows you to sign in with your organization identity. You need to get the Start URL from your organization administrator.",
+      "startUrl": "Start URL",
+      "startUrlRequired": "Please enter Start URL",
+      "startUrlInvalid": "Invalid Start URL format, expected https://d-xxxxxxxx.awsapps.com/start",
+      "startUrlPlaceholder": "https://d-xxxxxxxx.awsapps.com/start"
     }
   },
   "apiKeys": {
@@ -238,7 +251,11 @@
     "autoLaunch": "Launch at Startup",
     "autoLaunchDesc": "Automatically start the app when system boots",
     "autoLaunchEnabled": "Launch at startup enabled",
-    "autoLaunchDisabled": "Launch at startup disabled"
+    "autoLaunchDisabled": "Launch at startup disabled",
+    "apiSettings": "API Settings",
+    "systemPrompt": "System Prompt",
+    "systemPromptDesc": "System prompt to inject when forwarding requests, will be added to the system field of each request",
+    "systemPromptPlaceholder": "Enter system prompt to inject..."
   },
   "integration": {
     "title": "Integration Guide",

@@ -29,10 +29,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const credentials = JSON.parse(provider.credentials)
-    const service = new KiroService(credentials, provider.region)
+    const service = new KiroService({ ...credentials, region: provider.region })
 
     // 刷新 token
-    const newCredentials = await service.refreshToken()
+    const newCredentials = await service.refreshAccessToken()
 
     // 更新数据库中的凭据
     updateProvider(providerId, {

@@ -4,8 +4,8 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // 公开路径：登录页、静态资源、API 认证端点
-  const publicPaths = ['/login', '/_next', '/favicon.ico', '/api/auth/login']
+  // 公开路径：登录页、静态资源、API 认证端点、代理 API
+  const publicPaths = ['/login', '/_next', '/favicon.ico', '/api/auth/login', '/api/v1', '/api/health']
 
   const isPublicPath = publicPaths.some((path) => pathname.startsWith(path))
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateAdmin } from '@/lib/middleware/auth'
-import { startBuilderIdAuth } from '@/lib/kiro/oauth'
+import { startBuilderIDAuth } from '@/lib/kiro/oauth'
 
 /**
  * POST /api/oauth/builder-id - 启动 AWS Builder ID 认证流程
@@ -15,16 +15,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { region = 'us-east-1' } = body
 
-    const session = await startBuilderIdAuth(region)
+    const session = await startBuilderIDAuth(region)
 
     return NextResponse.json({
       success: true,
-      sessionId: session.id,
+      sessionId: session.sessionId,
       userCode: session.userCode,
-      verificationUri: session.verificationUri,
-      verificationUriComplete: session.verificationUriComplete,
+      authUrl: session.authUrl,
       expiresIn: session.expiresIn,
-      interval: session.interval,
     })
   } catch (error: any) {
     console.error('[API] Start builder ID auth error:', error)

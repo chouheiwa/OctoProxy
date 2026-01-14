@@ -43,15 +43,12 @@ jobs:
         run: node scripts/generate-icons.js
 
       - name: Install frontend dependencies
-        working-directory: web
+        working-directory: app
         run: npm ci
 
       - name: Build frontend
-        working-directory: web
+        working-directory: app
         run: npm run build
-
-      - name: Copy frontend to static
-        run: node scripts/copy-static.js
 
       - name: Build Electron app (macOS)
         if: matrix.platform == 'mac'

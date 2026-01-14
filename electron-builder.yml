@@ -5,6 +5,7 @@ copyright: Copyright © 2024
 directories:
   output: dist-electron
   buildResources: assets
+  app: .
 
 files:
   - electron/**/*

@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
             id: provider.id,
             name: provider.name || `Provider ${provider.id}`,
             account_email: cachedUsage?.user?.email || provider.account_email,
+            subscription: cachedUsage?.subscription || null,
             usage: { used, limit, percent },
             exhausted,
             lastSync: provider.last_usage_sync,

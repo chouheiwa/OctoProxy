@@ -19,7 +19,6 @@ import {
 } from "antd";
 import {
   ReloadOutlined,
-  UserOutlined,
   ExclamationCircleOutlined,
   SyncOutlined,
   AppstoreOutlined,
@@ -34,10 +33,18 @@ interface UsageData {
   percent: number;
 }
 
+interface SubscriptionInfo {
+  title: string;
+  type: string;
+  upgradeCapability?: string;
+  overageCapability?: string;
+}
+
 interface Provider {
   id: number;
   name: string;
   account_email?: string;
+  subscription?: SubscriptionInfo | null;
   usage: UsageData | null;
   exhausted: boolean;
   lastSync: string | null;
@@ -96,6 +103,8 @@ export default function UsagePage() {
           if (response.success) {
             updatedProviders[i] = {
               ...provider,
+              account_email: response.account_email || provider.account_email,
+              subscription: response.subscription || provider.subscription,
               usage: response.usage,
               lastSync: response.lastSync,
               fromCache: false,
@@ -142,6 +151,8 @@ export default function UsagePage() {
             p.id === providerId
               ? {
                   ...p,
+                  account_email: response.account_email || p.account_email,
+                  subscription: response.subscription || p.subscription,
                   usage: response.usage,
                   lastSync: response.lastSync,
                   fromCache: false,
@@ -298,6 +309,11 @@ export default function UsagePage() {
               title={
                 <Space>
                   <span>{provider.name}</span>
+                  {provider.account_email && (
+                    <Text type="secondary" style={{ fontSize: 13, fontWeight: 'normal' }}>
+                      ({provider.account_email})
+                    </Text>
+                  )}
                 </Space>
               }
               extra={
@@ -339,12 +355,10 @@ export default function UsagePage() {
                 </div>
               ) : (
                 <>
-                  {provider.account_email && (
+                  {/* 订阅类型 */}
+                  {provider.subscription?.title && (
                     <div style={{ marginBottom: 16 }}>
-                      <Space>
-                        <UserOutlined />
-                        <Text>{provider.account_email}</Text>
-                      </Space>
+                      <Tag color="blue">{provider.subscription.title}</Tag>
                     </div>
                   )}
 
@@ -356,7 +370,7 @@ export default function UsagePage() {
                         marginBottom: 4,
                       }}
                     >
-                      <Text strong>{t("usage.totalUsage")}</Text>
+                      <Text strong>{t("usage.base")}</Text>
                       <Text type={isOverLimit ? "danger" : "secondary"}>
                         {used} / {limit}
                       </Text>

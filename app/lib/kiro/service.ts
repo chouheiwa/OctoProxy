@@ -782,6 +782,10 @@ export class KiroService {
       const jsonStr = remaining.substring(jsonStart, jsonEnd + 1);
       try {
         const parsed = JSON.parse(jsonStr);
+        // 调试日志：打印解析的 JSON（非 content 类型）
+        if (parsed.content === undefined) {
+          console.log("[Kiro] Parsed non-content event:", jsonStr.substring(0, 200));
+        }
         if (parsed.content !== undefined && !parsed.followupPrompt) {
           events.push({ type: "content", data: parsed.content });
         } else if (parsed.name && parsed.toolUseId) {

@@ -65,6 +65,14 @@ export interface KiroStreamEvent {
   type: string;
   content?: string;
   percentage?: number;
+  toolUse?: {
+    toolUseId: string;
+    name: string;
+    input?: string | object;
+    stop?: boolean;
+  };
+  input?: string;
+  stop?: boolean;
 }
 
 /**
@@ -105,10 +113,38 @@ export function convertMessagesToKiro(
 
     // 处理多模态内容（数组格式）
     if (Array.isArray(content)) {
-      const textParts = content
-        .filter((part) => part.type === "text")
-        .map((part) => part.text || "");
-      content = textParts.join("\n");
+      const contentParts: string[] = [];
+
+      for (const part of content) {
+        if (part.type === "text" && part.text) {
+          contentParts.push(part.text);
+        } else if (part.type === "tool_use") {
+          // 工具调用：转换为可读格式
+          const toolUse = part as any;
+          const inputStr = typeof toolUse.input === 'string'
+            ? toolUse.input
+            : JSON.stringify(toolUse.input || {});
+          const toolId = toolUse.id ? `(${toolUse.id}) ` : '';
+          contentParts.push(`[Called ${toolUse.name} ${toolId}with args: ${inputStr}]`);
+        } else if (part.type === "tool_result") {
+          // 工具结果：转换为可读格式
+          const toolResult = part as any;
+          let resultContent = '';
+          if (typeof toolResult.content === 'string') {
+            resultContent = toolResult.content;
+          } else if (Array.isArray(toolResult.content)) {
+            resultContent = toolResult.content
+              .filter((c: any) => c.type === 'text')
+              .map((c: any) => c.text)
+              .join('\n');
+          }
+          const errorPrefix = toolResult.is_error ? '[Error] ' : '';
+          const toolId = toolResult.tool_use_id ? `(${toolResult.tool_use_id}) ` : '';
+          contentParts.push(`[Tool result ${toolId}${errorPrefix}: ${resultContent}]`);
+        }
+      }
+
+      content = contentParts.join("\n");
     }
 
     result.push({
@@ -193,7 +229,7 @@ export function createMessageStart(id: string, model: string): string {
 }
 
 /**
- * 创建 content_block_start 事件
+ * 创建 content_block_start 事件 (文本类型)
  */
 export function createContentBlockStart(index: number = 0): string {
   return createStreamEvent("content_block_start", {
@@ -202,6 +238,43 @@ export function createContentBlockStart(index: number = 0): string {
     content_block: {
       type: "text",
       text: "",
+    },
+  });
+}
+
+/**
+ * 创建 tool_use content_block_start 事件
+ */
+export function createToolUseBlockStart(
+  index: number,
+  toolUseId: string,
+  name: string
+): string {
+  return createStreamEvent("content_block_start", {
+    type: "content_block_start",
+    index,
+    content_block: {
+      type: "tool_use",
+      id: toolUseId,
+      name: name,
+      input: {},
+    },
+  });
+}
+
+/**
+ * 创建 tool_use input_json_delta 事件
+ */
+export function createToolUseInputDelta(
+  index: number,
+  partialJson: string
+): string {
+  return createStreamEvent("content_block_delta", {
+    type: "content_block_delta",
+    index,
+    delta: {
+      type: "input_json_delta",
+      partial_json: partialJson,
     },
   });
 }
@@ -272,7 +345,17 @@ export function createPing(): string {
 }
 
 /**
+ * 工具调用收集接口
+ */
+interface CollectedToolCall {
+  toolUseId: string;
+  name: string;
+  input: string;
+}
+
+/**
  * 生成 Claude 格式的流式响应
+ * 采用参考实现的策略：先收集所有工具调用，在流结束后统一发送
  */
 export async function* convertStreamToClaude(
   kiroStream: AsyncGenerator<KiroStreamEvent>,
@@ -282,25 +365,73 @@ export async function* convertStreamToClaude(
   let usage: Usage | null = null;
   let stopReason = "end_turn";
   let contentStarted = false;
+  let textBlockIndex = 0;
+
+  // 工具调用收集
+  const toolCalls: CollectedToolCall[] = [];
+  let currentToolCall: CollectedToolCall | null = null;
 
   // 发送 message_start
   yield createMessageStart(id, model);
 
   try {
     for await (const event of kiroStream) {
+      // 调试日志：打印 Kiro 返回的事件
+      if (event.type !== "content") {
+        console.log("[Claude Converter] Kiro event:", JSON.stringify(event));
+      }
+
       // Kiro 返回的事件格式: { type: "content", content: "..." }
       if (event.type === "content" && event.content) {
         // 首次收到内容时发送 content_block_start
         if (!contentStarted) {
-          yield createContentBlockStart(0);
+          yield createContentBlockStart(textBlockIndex);
           contentStarted = true;
         }
-        yield createContentBlockDelta(0, event.content);
+        yield createContentBlockDelta(textBlockIndex, event.content);
+      } else if (event.type === "toolUse" && (event as any).toolUse) {
+        // 工具调用事件 - 收集但不立即发送
+        const toolData = (event as any).toolUse;
+
+        if (toolData.name && toolData.toolUseId) {
+          // 检查是否是同一个工具调用的续传
+          if (currentToolCall && currentToolCall.toolUseId === toolData.toolUseId) {
+            // 同一个工具调用，累积 input
+            currentToolCall.input += toolData.input || '';
+          } else {
+            // 不同的工具调用
+            // 如果有未完成的工具调用，先保存它
+            if (currentToolCall) {
+              toolCalls.push(currentToolCall);
+            }
+            // 开始新的工具调用
+            currentToolCall = {
+              toolUseId: toolData.toolUseId,
+              name: toolData.name,
+              input: typeof toolData.input === 'string' ? toolData.input : JSON.stringify(toolData.input || {}),
+            };
+          }
+          // 如果这个事件包含 stop，完成工具调用
+          if (toolData.stop) {
+            toolCalls.push(currentToolCall);
+            currentToolCall = null;
+          }
+        }
+      } else if (event.type === "toolUseInput" && (event as any).input !== undefined) {
+        // 工具输入增量 - 累积到当前工具调用
+        if (currentToolCall) {
+          currentToolCall.input += (event as any).input || '';
+        }
+      } else if (event.type === "toolUseStop") {
+        // 工具调用结束 - 保存当前工具调用
+        // toolUseStop 事件本身就表示结束，不需要额外检查 stop 值
+        if (currentToolCall) {
+          toolCalls.push(currentToolCall);
+          currentToolCall = null;
+        }
       } else if (event.type === "contextUsage") {
         // 上下文使用百分比，可用于估算 token
         // 暂时忽略
-      } else if (event.type === "toolUse") {
-        // 工具调用 - 暂不支持
       }
     }
   } catch (error: any) {
@@ -308,9 +439,52 @@ export async function* convertStreamToClaude(
     stopReason = "error";
   }
 
-  // 如果有内容，发送 content_block_stop
+  // 处理未完成的工具调用（如果流提前结束）
+  if (currentToolCall) {
+    toolCalls.push(currentToolCall);
+    currentToolCall = null;
+  }
+
+  // 关闭文本内容块
   if (contentStarted) {
-    yield createContentBlockStop(0);
+    yield createContentBlockStop(textBlockIndex);
+  }
+
+  // 在流结束后统一发送所有工具调用事件
+  if (toolCalls.length > 0) {
+    console.log("[Claude Converter] Sending tool calls:", toolCalls.map(tc => tc.name).join(', '));
+
+    const baseIndex = textBlockIndex + (contentStarted ? 1 : 0);
+    for (let i = 0; i < toolCalls.length; i++) {
+      const tc = toolCalls[i];
+      const blockIndex = baseIndex + i;
+
+      // 解析 input 为对象（如果是字符串的话）
+      let inputJson: string;
+      if (typeof tc.input === 'string') {
+        try {
+          // 尝试解析并重新序列化，确保格式正确
+          const parsed = JSON.parse(tc.input);
+          inputJson = JSON.stringify(parsed);
+        } catch {
+          // 如果解析失败，使用空对象
+          inputJson = tc.input || '{}';
+        }
+      } else {
+        inputJson = JSON.stringify(tc.input || {});
+      }
+
+      console.log(`[Claude Converter] Tool call ${i}: ${tc.name} (${tc.toolUseId}), input: ${inputJson.substring(0, 100)}...`);
+
+      // 发送 content_block_start
+      yield createToolUseBlockStart(blockIndex, tc.toolUseId, tc.name);
+      // 发送完整的 input_json_delta
+      yield createToolUseInputDelta(blockIndex, inputJson);
+      // 发送 content_block_stop
+      yield createContentBlockStop(blockIndex);
+    }
+
+    stopReason = "tool_use";
   }
 
   // 发送 message_delta 和 message_stop
@@ -340,6 +514,8 @@ export default {
   createStreamEvent,
   createMessageStart,
   createContentBlockStart,
+  createToolUseBlockStart,
+  createToolUseInputDelta,
   createContentBlockDelta,
   createContentBlockStop,
   createMessageDelta,

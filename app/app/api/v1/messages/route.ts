@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     stream = false,
     max_tokens,
     temperature,
+    tools,
   } = body
 
   // 验证必填字段
@@ -104,6 +105,12 @@ export async function POST(request: NextRequest) {
   // 如果有 system prompt，添加到请求中
   if (finalSystemPrompt) {
     requestBody.system = finalSystemPrompt
+  }
+
+  // 如果有 tools，添加到请求中
+  if (tools && Array.isArray(tools) && tools.length > 0) {
+    requestBody.tools = tools
+    console.log('[API] Tools received:', tools.map((t: any) => t.name).join(', '))
   }
 
   if (stream) {

@@ -30,11 +30,7 @@ extraResources:
     to: app/.next/standalone/app/.next/static
     filter:
       - "**/*"
-  # public 需要在 standalone/app/public 下
-  - from: app/public
-    to: app/.next/standalone/app/public
-    filter:
-      - "**/*"
+  # 注意：public 目录不需要单独复制，Next.js standalone 构建已经包含了 app/public
   - from: app/lib/db/migrations
     to: app/lib/db/migrations
     filter:

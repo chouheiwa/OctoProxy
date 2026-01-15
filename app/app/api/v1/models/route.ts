@@ -10,7 +10,7 @@ import { KIRO_MODELS } from '@/lib/kiro/constants'
 
 export async function GET(request: NextRequest) {
   // 认证
-  const auth = authenticateApiKey(request)
+  const auth = await authenticateApiKey(request)
   if (!auth.success) {
     return NextResponse.json(
       openaiConverter.createErrorResponse(auth.error || 'Authentication failed', 'authentication_error'),

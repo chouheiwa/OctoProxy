@@ -18,8 +18,7 @@
     "electron:build:mac": "npm run build && electron-builder --mac",
     "electron:build:win": "npm run build && electron-builder --win",
     "electron:build:linux": "npm run build && electron-builder --linux",
-    "generate:icons": "node scripts/generate-icons.js",
-    "postinstall": "electron-builder install-app-deps"
+    "generate:icons": "node scripts/generate-icons.js"
   },
   "keywords": [
     "octoproxy",
@@ -32,7 +31,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "better-sqlite3": "^12.6.0",
     "axios": "^1.7.9",
     "uuid": "^11.0.5",
     "@anthropic-ai/tokenizer": "^0.0.4",

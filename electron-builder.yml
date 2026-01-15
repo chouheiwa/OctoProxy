@@ -9,6 +9,10 @@ directories:
 
 files:
   - electron/**/*
+  - assets/tray-icon.png
+  - assets/tray-iconTemplate.png
+  - assets/tray-iconTemplate@2x.png
+  - assets/icon.png
   - package.json
   - "!**/*.map"
   - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
@@ -21,12 +25,14 @@ extraResources:
     to: app/.next/standalone
     filter:
       - "**/*"
+  # static 需要在 standalone/app/.next/static 下
   - from: app/.next/static
-    to: app/.next/static
+    to: app/.next/standalone/app/.next/static
     filter:
       - "**/*"
+  # public 需要在 standalone/app/public 下
   - from: app/public
-    to: app/public
+    to: app/.next/standalone/app/public
     filter:
       - "**/*"
   - from: app/lib/db/migrations

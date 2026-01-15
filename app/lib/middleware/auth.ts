@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { ensureDatabase } from '@/lib/db'
 import { getSessionByToken } from '@/lib/db/sessions'
 import { getUserById } from '@/lib/db/users'
 import type { SafeUser } from '@/lib/db/users'
@@ -15,6 +16,9 @@ export interface AuthResult {
  * 验证 session 令牌
  */
 export async function authenticateSession(request: NextRequest): Promise<AuthResult> {
+  // 确保数据库已初始化
+  await ensureDatabase()
+
   const sessionToken = request.cookies.get('session_token')?.value
 
   if (!sessionToken) {
@@ -99,7 +103,10 @@ export function extractApiKeyFromRequest(request: NextRequest): string | null {
 /**
  * 验证 API Key
  */
-export function authenticateApiKey(request: NextRequest): ApiKeyAuthResult {
+export async function authenticateApiKey(request: NextRequest): Promise<ApiKeyAuthResult> {
+  // 确保数据库已初始化
+  await ensureDatabase()
+
   const key = extractApiKeyFromRequest(request)
 
   if (!key) {

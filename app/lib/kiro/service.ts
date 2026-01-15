@@ -432,6 +432,11 @@ export class KiroService {
    * 刷新 Access Token
    */
   public async refreshAccessToken(): Promise<RefreshResponse> {
+    // 确保服务已初始化
+    if (!this.isInitialized) {
+      this.initialize();
+    }
+
     if (!this.refreshToken) {
       throw new Error("No refresh token available");
     }

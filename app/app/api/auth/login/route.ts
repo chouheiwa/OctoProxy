@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ensureDatabase } from '@/lib/db'
 import { authenticateUser } from '@/lib/db/users'
 import { createSession } from '@/lib/db/sessions'
 
 export async function POST(request: NextRequest) {
   try {
+    // 确保数据库已初始化（sql.js 需要异步加载 WASM）
+    await ensureDatabase()
+
     const body = await request.json()
     const { username, password } = body
 
@@ -46,9 +50,9 @@ export async function POST(request: NextRequest) {
 
     return response
   } catch (error: any) {
-    console.error('[API] Login error:', error)
+    console.error('[API] Login error:', error?.message || error, error?.stack)
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { success: false, error: error?.message || 'Internal server error' },
       { status: 500 }
     )
   }

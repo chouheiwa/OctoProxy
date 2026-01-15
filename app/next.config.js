@@ -8,6 +8,10 @@ const nextConfig = {
   productionBrowserSourceMaps: false,
   // 禁用 x-powered-by header
   poweredByHeader: false,
+  // 启用 instrumentation hook（服务器启动时初始化数据库）
+  experimental: {
+    instrumentationHook: true,
+  },
 }
 
 module.exports = nextConfig

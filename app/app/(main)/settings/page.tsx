@@ -16,6 +16,7 @@ import {
   Descriptions,
   Switch,
   Input,
+  Space,
 } from "antd";
 import {
   SettingOutlined,
@@ -405,12 +406,10 @@ export default function Settings() {
             label={t("settings.usageSyncInterval")}
             extra={t("settings.usageSyncIntervalDesc")}
           >
-            <InputNumber
-              min={1}
-              max={60}
-              addonAfter={t("settings.minutes")}
-              style={{ width: 200 }}
-            />
+            <Space.Compact>
+              <InputNumber min={1} max={60} style={{ width: 150 }} />
+              <Button disabled>{t("settings.minutes")}</Button>
+            </Space.Compact>
           </Form.Item>
 
           <Form.Item
@@ -418,12 +417,10 @@ export default function Settings() {
             label={t("settings.healthCheckInterval")}
             extra={t("settings.healthCheckIntervalDesc")}
           >
-            <InputNumber
-              min={1}
-              max={60}
-              addonAfter={t("settings.minutes")}
-              style={{ width: 200 }}
-            />
+            <Space.Compact>
+              <InputNumber min={1} max={60} style={{ width: 150 }} />
+              <Button disabled>{t("settings.minutes")}</Button>
+            </Space.Compact>
           </Form.Item>
 
           <Divider titlePlacement="left">{t("settings.errorHandling")}</Divider>

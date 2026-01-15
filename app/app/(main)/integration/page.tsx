@@ -234,10 +234,10 @@ export default function Integration() {
   };
 
   const claudeCodeContent = (
-    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+    <Space orientation="vertical" size="large" style={{ width: "100%" }}>
       <ElectronKeyBanner />
 
-      <Alert message={t("integration.claudeCode.tip")} type="info" showIcon />
+      <Alert title={t("integration.claudeCode.tip")} type="info" showIcon />
 
       <Card title={t("integration.claudeCode.jsonConfigTitle")} size="small">
         <Paragraph>{t("integration.claudeCode.jsonConfigDesc")}</Paragraph>
@@ -285,7 +285,7 @@ export default function Integration() {
             key: "cli",
             label: t("integration.claudeCode.cliConfigTitle"),
             children: (
-              <Space direction="vertical" style={{ width: "100%" }}>
+              <Space orientation="vertical" style={{ width: "100%" }}>
                 <Paragraph>
                   {t("integration.claudeCode.cliConfigDesc")}
                 </Paragraph>
@@ -316,7 +316,7 @@ export default function Integration() {
             key: "env",
             label: t("integration.claudeCode.envVarsTitle"),
             children: (
-              <Space direction="vertical" style={{ width: "100%" }}>
+              <Space orientation="vertical" style={{ width: "100%" }}>
                 <Paragraph>{t("integration.claudeCode.envVarsDesc")}</Paragraph>
                 <CodeBlock
                   code={`export ANTHROPIC_BASE_URL="${baseUrl}/api"
@@ -332,13 +332,13 @@ export ANTHROPIC_AUTH_TOKEN="${getDisplayApiKey()}"`}
   );
 
   const openaiContent = (
-    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+    <Space orientation="vertical" size="large" style={{ width: "100%" }}>
       <ElectronKeyBanner />
 
-      <Alert message={t("integration.openai.tip")} type="info" showIcon />
+      <Alert title={t("integration.openai.tip")} type="info" showIcon />
 
       <Card title={t("integration.openai.endpointTitle")} size="small">
-        <Space direction="vertical" style={{ width: "100%" }}>
+        <Space orientation="vertical" style={{ width: "100%" }}>
           <div>
             <Tag color="green">POST</Tag>
             <Text code>{baseUrl}/api/v1/chat/completions</Text>
@@ -415,13 +415,13 @@ for await (const chunk of stream) {
   );
 
   const claudeContent = (
-    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+    <Space orientation="vertical" size="large" style={{ width: "100%" }}>
       <ElectronKeyBanner />
 
-      <Alert message={t("integration.claude.tip")} type="info" showIcon />
+      <Alert title={t("integration.claude.tip")} type="info" showIcon />
 
       <Card title={t("integration.claude.endpointTitle")} size="small">
-        <Space direction="vertical" style={{ width: "100%" }}>
+        <Space orientation="vertical" style={{ width: "100%" }}>
           <div>
             <Tag color="green">POST</Tag>
             <Text code>{baseUrl}/api/v1/messages</Text>
@@ -497,12 +497,12 @@ for await (const event of stream) {
   );
 
   const otherToolsContent = (
-    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+    <Space orientation="vertical" size="large" style={{ width: "100%" }}>
       <ElectronKeyBanner />
 
       <Card title={t("integration.other.cursorTitle")} size="small">
         <Paragraph>{t("integration.other.cursorDesc")}</Paragraph>
-        <Space direction="vertical" style={{ width: "100%" }}>
+        <Space orientation="vertical" style={{ width: "100%" }}>
           <Text strong>{t("integration.other.cursorSteps")}</Text>
           <ol style={{ paddingLeft: 20, margin: "8px 0" }}>
             <li>{t("integration.other.cursorStep1")}</li>

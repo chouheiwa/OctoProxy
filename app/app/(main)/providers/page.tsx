@@ -1181,7 +1181,7 @@ export default function ProvidersPage() {
         open={idcModalOpen}
         onCancel={() => setIdcModalOpen(false)}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
       >
         {oauthLoading ? (
           <div style={{ textAlign: "center", padding: 40 }}>

@@ -2,7 +2,7 @@
  * Electron 主进程
  */
 
-import { app, BrowserWindow, ipcMain, session, dialog, shell } from "electron";
+import { app, BrowserWindow, ipcMain, session, dialog, shell, Menu } from "electron";
 import path from "path";
 import net from "net";
 import { fileURLToPath } from "url";
@@ -17,6 +17,12 @@ import { initLogger, getLogDir, getLogFiles, readLogFile, cleanOldLogs, closeLog
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// 设置应用名称和进程标题
+process.title = 'OctoProxy';
+if (process.platform === 'darwin') {
+  app.setName('OctoProxy');
+}
 
 // 保持窗口引用，防止被垃圾回收
 let mainWindow = null;
@@ -197,6 +203,14 @@ async function startBackendServer(port) {
       // 切换到 standalone 目录，Next.js 需要正确的 cwd
       process.chdir(standaloneDir);
       console.log(`[Electron] Changed cwd to: ${process.cwd()}`);
+
+      // 锁定 process.title，防止 Next.js 覆盖
+      const originalTitle = 'OctoProxy';
+      Object.defineProperty(process, 'title', {
+        get: () => originalTitle,
+        set: () => {}, // 忽略所有设置尝试
+        configurable: false,
+      });
 
       // 动态导入 standalone 服务器
       await import(standaloneServerPath);
@@ -517,6 +531,71 @@ function getLogViewerHTML() {
 </html>`;
 }
 
+/**
+ * 创建 macOS 应用菜单
+ */
+function createAppMenu() {
+  if (process.platform !== 'darwin') return;
+
+  const appName = 'OctoProxy';
+  const template = [
+    {
+      label: appName,
+      submenu: [
+        { label: `About ${appName}`, role: 'about' },
+        { type: 'separator' },
+        { label: 'Services', role: 'services', submenu: [] },
+        { type: 'separator' },
+        { label: `Hide ${appName}`, role: 'hide' },
+        { label: 'Hide Others', role: 'hideOthers' },
+        { label: 'Show All', role: 'unhide' },
+        { type: 'separator' },
+        { label: `Quit ${appName}`, role: 'quit' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { label: 'Undo', role: 'undo' },
+        { label: 'Redo', role: 'redo' },
+        { type: 'separator' },
+        { label: 'Cut', role: 'cut' },
+        { label: 'Copy', role: 'copy' },
+        { label: 'Paste', role: 'paste' },
+        { label: 'Select All', role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { label: 'Reload', role: 'reload' },
+        { label: 'Force Reload', role: 'forceReload' },
+        { label: 'Toggle Developer Tools', role: 'toggleDevTools' },
+        { type: 'separator' },
+        { label: 'Actual Size', role: 'resetZoom' },
+        { label: 'Zoom In', role: 'zoomIn' },
+        { label: 'Zoom Out', role: 'zoomOut' },
+        { type: 'separator' },
+        { label: 'Toggle Fullscreen', role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { label: 'Minimize', role: 'minimize' },
+        { label: 'Zoom', role: 'zoom' },
+        { type: 'separator' },
+        { label: 'Close', role: 'close' },
+        { type: 'separator' },
+        { label: 'Bring All to Front', role: 'front' },
+      ],
+    },
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
 // 注册 IPC 处理器
 function registerIpcHandlers() {
   // 检查更新
@@ -758,6 +837,9 @@ app.whenReady().then(async () => {
   // 初始化日志系统（必须在其他操作之前）
   initLogger();
   cleanOldLogs(7); // 清理7天前的日志
+
+  // 创建 macOS 应用菜单（设置正确的应用名称）
+  createAppMenu();
 
   // 设置环境变量
   setupEnvironment();

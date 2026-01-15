@@ -23,20 +23,17 @@ export function createTray(showWindow, quitApp, openLogWindow) {
   let icon;
   try {
     if (process.platform === "darwin") {
-      // macOS: 优先使用 Template 图标（单色），否则使用普通图标
+      // macOS: 使用 Template 图标（黑色，macOS 会自动适配深色/浅色模式）
       const templateIconPath = path.join(__dirname, "../assets/tray-iconTemplate.png");
       const normalIconPath = path.join(__dirname, "../assets/tray-icon.png");
 
-      // 检查是否存在 Template 图标
       if (fs.existsSync(templateIconPath)) {
+        // Template 图标：不要 resize，让 Electron 自动处理 @2x 版本
         icon = nativeImage.createFromPath(templateIconPath);
-        icon = icon.resize({ width: 18, height: 18 });
         icon.setTemplateImage(true);
       } else {
-        // 使用普通图标，不设置为 template（保持彩色）
         icon = nativeImage.createFromPath(normalIconPath);
         icon = icon.resize({ width: 18, height: 18 });
-        // 不调用 setTemplateImage，保持原始颜色
       }
     } else {
       // Windows/Linux: 使用普通图标

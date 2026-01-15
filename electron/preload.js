@@ -37,6 +37,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Token 扫描相关
   scanKiroTokens: () => ipcRenderer.invoke("scan-kiro-tokens"),
 
+  // 日志相关
+  getLogDir: () => ipcRenderer.invoke("get-log-dir"),
+  getLogFiles: () => ipcRenderer.invoke("get-log-files"),
+  readLogFile: (options) => ipcRenderer.invoke("read-log-file", options),
+  openLogWindow: () => ipcRenderer.invoke("open-log-window"),
+  openLogDir: () => ipcRenderer.invoke("open-log-dir"),
+
   // 监听更新事件
   onUpdateAvailable: (callback) => {
     ipcRenderer.on("update-available", (event, info) => callback(info));

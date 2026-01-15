@@ -2,7 +2,7 @@
  * Electron 主进程
  */
 
-import { app, BrowserWindow, ipcMain, session, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, session, dialog, shell } from "electron";
 import path from "path";
 import net from "net";
 import { fileURLToPath } from "url";
@@ -13,12 +13,14 @@ import {
   setAutoLaunchEnabled,
 } from "./autoLaunch.js";
 import { checkForUpdates, getUpdateStatus } from "./updater.js";
+import { initLogger, getLogDir, getLogFiles, readLogFile, cleanOldLogs, closeLogger } from "./logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // 保持窗口引用，防止被垃圾回收
 let mainWindow = null;
+let logWindow = null;
 let isQuitting = false;
 let currentPort = null; // 当前使用的端口
 
@@ -176,18 +178,25 @@ async function startBackendServer(port) {
 
     if (app.isPackaged) {
       // 生产模式：启动 Next.js standalone 服务器
-      const standaloneServerPath = path.join(
+      // 由于 outputFileTracingRoot 设置为项目根目录，standalone 输出结构为 standalone/app/server.js
+      const standaloneDir = path.join(
         process.resourcesPath,
         'app',
         '.next',
         'standalone',
-        'server.js'
+        'app'
       );
+      const standaloneServerPath = path.join(standaloneDir, 'server.js');
 
       console.log(`[Electron] Starting Next.js standalone server from: ${standaloneServerPath}`);
+      console.log(`[Electron] Standalone directory: ${standaloneDir}`);
 
       // 设置 Next.js 所需的环境变量
       process.env.NODE_ENV = 'production';
+
+      // 切换到 standalone 目录，Next.js 需要正确的 cwd
+      process.chdir(standaloneDir);
+      console.log(`[Electron] Changed cwd to: ${process.cwd()}`);
 
       // 动态导入 standalone 服务器
       await import(standaloneServerPath);
@@ -284,6 +293,230 @@ async function checkAndResolvePort(configPort) {
   return null;
 }
 
+/**
+ * 打开日志查看窗口
+ */
+function openLogWindow() {
+  if (logWindow && !logWindow.isDestroyed()) {
+    logWindow.focus();
+    return;
+  }
+
+  logWindow = new BrowserWindow({
+    width: 900,
+    height: 600,
+    minWidth: 600,
+    minHeight: 400,
+    parent: mainWindow,
+    modal: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    title: "OctoProxy Logs",
+    icon: path.join(__dirname, "../assets/icon.png"),
+  });
+
+  // 加载日志页面
+  const logPageUrl = `data:text/html;charset=utf-8,${encodeURIComponent(getLogViewerHTML())}`;
+  logWindow.loadURL(logPageUrl);
+
+  logWindow.on("closed", () => {
+    logWindow = null;
+  });
+}
+
+/**
+ * 获取日志查看器 HTML
+ */
+function getLogViewerHTML() {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>OctoProxy Logs</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .toolbar {
+      background: #2d2d2d;
+      padding: 10px 15px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      border-bottom: 1px solid #404040;
+    }
+    .toolbar select, .toolbar button {
+      padding: 6px 12px;
+      border: 1px solid #404040;
+      border-radius: 4px;
+      background: #3c3c3c;
+      color: #d4d4d4;
+      cursor: pointer;
+    }
+    .toolbar select:hover, .toolbar button:hover {
+      background: #4a4a4a;
+    }
+    .toolbar button.primary {
+      background: #0e639c;
+      border-color: #1177bb;
+    }
+    .toolbar button.primary:hover {
+      background: #1177bb;
+    }
+    .log-content {
+      flex: 1;
+      overflow: auto;
+      padding: 10px;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-line { padding: 2px 0; }
+    .log-line.error { color: #f48771; }
+    .log-line.warn { color: #cca700; }
+    .log-line.info { color: #3794ff; }
+    .status-bar {
+      background: #007acc;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: white;
+    }
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <select id="fileSelect">
+      <option value="">Select log file...</option>
+    </select>
+    <button onclick="refreshLogs()">Refresh</button>
+    <button onclick="openLogDir()" class="primary">Open Log Folder</button>
+    <span style="flex:1"></span>
+    <span id="fileInfo" style="color:#888;font-size:12px;"></span>
+  </div>
+  <div class="log-content" id="logContent">
+    <div class="loading">Select a log file to view</div>
+  </div>
+  <div class="status-bar" id="statusBar">Ready</div>
+
+  <script>
+    let currentFile = '';
+
+    async function loadFileList() {
+      try {
+        const files = await window.electronAPI.getLogFiles();
+        const select = document.getElementById('fileSelect');
+        select.innerHTML = '<option value="">Select log file...</option>';
+        files.forEach(f => {
+          const opt = document.createElement('option');
+          opt.value = f.name;
+          opt.textContent = f.name + ' (' + formatSize(f.size) + ')';
+          select.appendChild(opt);
+        });
+        if (files.length > 0 && !currentFile) {
+          // Auto-select the latest error log or main log
+          const errorLog = files.find(f => f.name.includes('error'));
+          const mainLog = files.find(f => f.name.includes('main'));
+          if (errorLog) {
+            select.value = errorLog.name;
+            loadLogFile(errorLog.name);
+          } else if (mainLog) {
+            select.value = mainLog.name;
+            loadLogFile(mainLog.name);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load file list:', e);
+      }
+    }
+
+    async function loadLogFile(filename) {
+      if (!filename) return;
+      currentFile = filename;
+      document.getElementById('statusBar').textContent = 'Loading...';
+      try {
+        const result = await window.electronAPI.readLogFile({ filename, lines: 500 });
+        if (result.error) {
+          document.getElementById('logContent').innerHTML = '<div class="loading">Error: ' + result.error + '</div>';
+        } else {
+          const html = result.lines.map(line => {
+            let cls = 'log-line';
+            if (line.includes('[ERROR]') || line.includes('[UNCAUGHT]')) cls += ' error';
+            else if (line.includes('[WARN]')) cls += ' warn';
+            else if (line.includes('[INFO]')) cls += ' info';
+            return '<div class="' + cls + '">' + escapeHtml(line) + '</div>';
+          }).join('');
+          document.getElementById('logContent').innerHTML = html;
+          document.getElementById('fileInfo').textContent = 'Lines: ' + result.totalLines;
+          // Scroll to bottom
+          const content = document.getElementById('logContent');
+          content.scrollTop = content.scrollHeight;
+        }
+        document.getElementById('statusBar').textContent = 'Loaded: ' + filename;
+      } catch (e) {
+        document.getElementById('logContent').innerHTML = '<div class="loading">Error: ' + e.message + '</div>';
+        document.getElementById('statusBar').textContent = 'Error loading file';
+      }
+    }
+
+    function refreshLogs() {
+      loadFileList();
+      if (currentFile) {
+        loadLogFile(currentFile);
+      }
+    }
+
+    async function openLogDir() {
+      await window.electronAPI.openLogDir();
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    document.getElementById('fileSelect').addEventListener('change', (e) => {
+      loadLogFile(e.target.value);
+    });
+
+    // Initial load
+    loadFileList();
+
+    // Auto-refresh every 5 seconds
+    setInterval(() => {
+      if (currentFile) {
+        loadLogFile(currentFile);
+      }
+    }, 5000);
+  </script>
+</body>
+</html>`;
+}
+
 // 注册 IPC 处理器
 function registerIpcHandlers() {
   // 检查更新
@@ -346,6 +579,32 @@ function registerIpcHandlers() {
         errors: [{ path: "scan", error: error.message }]
       };
     }
+  });
+
+  // 日志相关 IPC
+  ipcMain.handle("get-log-dir", () => {
+    return getLogDir();
+  });
+
+  ipcMain.handle("get-log-files", () => {
+    return getLogFiles();
+  });
+
+  ipcMain.handle("read-log-file", (event, { filename, lines }) => {
+    return readLogFile(filename, lines || 200);
+  });
+
+  ipcMain.handle("open-log-window", () => {
+    openLogWindow();
+    return true;
+  });
+
+  ipcMain.handle("open-log-dir", () => {
+    const dir = getLogDir();
+    if (dir) {
+      shell.openPath(dir);
+    }
+    return true;
   });
 }
 
@@ -496,6 +755,10 @@ function closeOAuthWindow(sessionId) {
 
 // 应用准备就绪
 app.whenReady().then(async () => {
+  // 初始化日志系统（必须在其他操作之前）
+  initLogger();
+  cleanOldLogs(7); // 清理7天前的日志
+
   // 设置环境变量
   setupEnvironment();
 
@@ -523,10 +786,14 @@ app.whenReady().then(async () => {
   createWindow();
 
   // 创建系统托盘
-  createTray(showWindow, () => {
-    isQuitting = true;
-    app.quit();
-  });
+  createTray(
+    showWindow,
+    () => {
+      isQuitting = true;
+      app.quit();
+    },
+    openLogWindow
+  );
 
   // 初始化开机自启
   await initAutoLaunch();
@@ -563,6 +830,9 @@ app.on("before-quit", () => {
     console.log('[Electron] Shutting down Next.js dev server...');
     global.nextProcess.kill();
   }
+
+  // 关闭日志流
+  closeLogger();
 });
 
 // 防止多实例

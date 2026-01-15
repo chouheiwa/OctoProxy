@@ -16,8 +16,9 @@ let tray = null;
  * 创建系统托盘
  * @param {Function} showWindow - 显示窗口的回调
  * @param {Function} quitApp - 退出应用的回调
+ * @param {Function} openLogWindow - 打开日志窗口的回调（可选）
  */
-export function createTray(showWindow, quitApp) {
+export function createTray(showWindow, quitApp, openLogWindow) {
   // 创建托盘图标
   let icon;
   try {
@@ -51,7 +52,7 @@ export function createTray(showWindow, quitApp) {
   tray = new Tray(icon);
 
   // 托盘菜单
-  const contextMenu = Menu.buildFromTemplate([
+  const menuItems = [
     {
       label: "显示主窗口",
       click: showWindow,
@@ -59,11 +60,25 @@ export function createTray(showWindow, quitApp) {
     {
       type: "separator",
     },
-    {
-      label: "退出",
-      click: quitApp,
-    },
-  ]);
+  ];
+
+  // 如果提供了打开日志窗口的回调，添加菜单项
+  if (openLogWindow) {
+    menuItems.push({
+      label: "查看日志",
+      click: openLogWindow,
+    });
+    menuItems.push({
+      type: "separator",
+    });
+  }
+
+  menuItems.push({
+    label: "退出",
+    click: quitApp,
+  });
+
+  const contextMenu = Menu.buildFromTemplate(menuItems);
 
   tray.setToolTip("OctoProxy");
   tray.setContextMenu(contextMenu);

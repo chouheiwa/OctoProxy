@@ -4,6 +4,7 @@ import * as crypto from "crypto";
 import * as http from "http";
 import * as https from "https";
 import * as os from "os";
+import { SSOOIDCClient, CreateTokenCommand } from "@aws-sdk/client-sso-oidc";
 import {
   KIRO_CONSTANTS,
   MODEL_MAPPING,
@@ -20,6 +21,7 @@ export interface KiroCredentials {
   refreshToken: string;
   clientId?: string;
   clientSecret?: string;
+  clientSecretExpiresAt?: number; // AWS OIDC 客户端凭证过期时间戳（秒）
   authMethod?: string;
   expiresAt?: string;
   profileArn?: string;
@@ -320,6 +322,7 @@ export class KiroService {
   public refreshToken: string;
   public clientId?: string;
   public clientSecret?: string;
+  public clientSecretExpiresAt?: number; // AWS OIDC 客户端凭证过期时间戳（秒）
   public authMethod: string;
   public expiresAt?: string;
   public profileArn?: string;
@@ -343,6 +346,7 @@ export class KiroService {
     this.refreshToken = credentials.refreshToken;
     this.clientId = credentials.clientId;
     this.clientSecret = credentials.clientSecret;
+    this.clientSecretExpiresAt = credentials.clientSecretExpiresAt;
     this.authMethod =
       credentials.authMethod || KIRO_CONSTANTS.AUTH_METHOD_SOCIAL;
     this.expiresAt = credentials.expiresAt;
@@ -441,19 +445,76 @@ export class KiroService {
       throw new Error("No refresh token available");
     }
 
-    const requestBody: any = { refreshToken: this.refreshToken };
-    let refreshUrl = this.refreshUrl;
-
     if (this.authMethod !== KIRO_CONSTANTS.AUTH_METHOD_SOCIAL) {
-      refreshUrl = this.refreshIDCUrl;
-      requestBody.clientId = this.clientId;
-      requestBody.clientSecret = this.clientSecret;
-      requestBody.grantType = "refresh_token";
+      // IAM Identity Center / Builder ID: 使用 AWS SDK
+      return this.refreshAccessTokenWithSDK();
+    } else {
+      // Social Auth: 使用 Kiro auth service
+      return this.refreshAccessTokenSocial();
+    }
+  }
+
+  /**
+   * 使用 AWS SDK 刷新 Access Token (IAM Identity Center / Builder ID)
+   */
+  private async refreshAccessTokenWithSDK(): Promise<RefreshResponse> {
+    // 检查客户端凭证是否过期（clientSecretExpiresAt 是秒级时间戳）
+    if (this.clientSecretExpiresAt && this.clientSecretExpiresAt * 1000 < Date.now()) {
+      throw new Error(
+        "AWS OIDC client credentials have expired. Please re-authenticate using device authorization flow."
+      );
+    }
+
+    if (!this.clientId || !this.clientSecret) {
+      throw new Error("clientId and clientSecret are required for IAM/Builder ID refresh");
     }
 
     try {
+      const client = new SSOOIDCClient({ region: this.region });
+      const command = new CreateTokenCommand({
+        clientId: this.clientId,
+        clientSecret: this.clientSecret,
+        grantType: "refresh_token",
+        refreshToken: this.refreshToken,
+      });
+
+      const response = await client.send(command);
+
+      if (response.accessToken) {
+        this.accessToken = response.accessToken;
+        this.refreshToken = response.refreshToken || this.refreshToken;
+        const expiresIn = response.expiresIn || 3600;
+        this.expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+        console.log("[Kiro] Access token refreshed successfully via AWS SDK");
+
+        return {
+          accessToken: this.accessToken,
+          refreshToken: this.refreshToken,
+          profileArn: this.profileArn,
+          expiresAt: this.expiresAt,
+        };
+      } else {
+        throw new Error("Invalid refresh response from AWS SDK");
+      }
+    } catch (error: any) {
+      console.error("[Kiro] AWS SDK token refresh failed:", error.message);
+      console.error("[Kiro] Error name:", error.name);
+      console.error("[Kiro] Auth method:", this.authMethod);
+      console.error("[Kiro] Region:", this.region);
+      throw error;
+    }
+  }
+
+  /**
+   * 使用 Kiro auth service 刷新 Access Token (Social Auth)
+   */
+  private async refreshAccessTokenSocial(): Promise<RefreshResponse> {
+    const requestBody = { refreshToken: this.refreshToken };
+
+    try {
       const response = await this.axiosSocialRefreshInstance!.post(
-        refreshUrl,
+        this.refreshUrl,
         requestBody,
       );
 
@@ -464,9 +525,8 @@ export class KiroService {
         const expiresIn = response.data.expiresIn;
         this.expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
-        console.log("[Kiro] Access token refreshed successfully");
+        console.log("[Kiro] Access token refreshed successfully via Social Auth");
 
-        // 返回更新后的凭据，供外部持久化
         return {
           accessToken: this.accessToken,
           refreshToken: this.refreshToken,
@@ -477,7 +537,7 @@ export class KiroService {
         throw new Error("Invalid refresh response");
       }
     } catch (error: any) {
-      console.error("[Kiro] Token refresh failed:", error.message);
+      console.error("[Kiro] Social token refresh failed:", error.message);
       throw error;
     }
   }

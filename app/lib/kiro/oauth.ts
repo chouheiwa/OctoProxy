@@ -6,6 +6,12 @@
 import http from "http";
 import crypto from "crypto";
 import { URL } from "url";
+import {
+  SSOOIDCClient,
+  RegisterClientCommand,
+  StartDeviceAuthorizationCommand,
+  CreateTokenCommand,
+} from "@aws-sdk/client-sso-oidc";
 
 /**
  * OAuth 配置接口
@@ -34,6 +40,7 @@ interface OAuthSession {
   state?: string;
   clientId?: string;
   clientSecret?: string;
+  clientSecretExpiresAt?: number; // AWS OIDC 客户端凭证过期时间戳（秒）
   deviceCode?: string;
   userCode?: string;
   interval?: number;
@@ -69,6 +76,7 @@ export interface Credentials {
   provider?: string;
   clientId?: string;
   clientSecret?: string;
+  clientSecretExpiresAt?: number; // AWS OIDC 客户端凭证过期时间戳（毫秒）
   region: string;
   startUrl: string;
   ssoRegion: string;
@@ -299,13 +307,6 @@ export async function startSocialAuth(
 }
 
 /**
- * 构建 IAM Identity Center OIDC 端点
- */
-function buildIdCOIDCEndpoint(region: string): string {
-  return `https://oidc.${region}.amazonaws.com`;
-}
-
-/**
  * 支持的 IAM Identity Center 区域列表
  */
 export const SUPPORTED_IDC_REGIONS = [
@@ -367,67 +368,43 @@ export async function startIdCAuth(
   }
 
   const sessionId = crypto.randomUUID();
-  const oidcEndpoint = buildIdCOIDCEndpoint(region);
 
   try {
-    // 1. 注册 OIDC 客户端 (使用用户提供的 startUrl)
-    const regResponse = await fetch(`${oidcEndpoint}/client/register`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": "KiroIDE",
-      },
-      body: JSON.stringify({
-        clientName: "KiroIDE",
-        clientType: "public",
-        scopes: KIRO_OAUTH_CONFIG.scopes,
-        grantTypes: [
-          "urn:ietf:params:oauth:grant-type:device_code",
-          "refresh_token",
-        ],
-      }),
+    // 使用 AWS SDK 进行客户端注册和设备授权
+    const ssoClient = new SSOOIDCClient({ region });
+
+    // 1. 注册 OIDC 客户端
+    const registerCommand = new RegisterClientCommand({
+      clientName: "KiroIDE",
+      clientType: "public",
+      scopes: KIRO_OAUTH_CONFIG.scopes,
+      grantTypes: [
+        "urn:ietf:params:oauth:grant-type:device_code",
+        "refresh_token",
+      ],
     });
 
-    if (!regResponse.ok) {
-      const errorText = await regResponse.text();
-      throw new Error(
-        `Client registration failed: ${regResponse.status} - ${errorText}`
-      );
-    }
+    const regData = await ssoClient.send(registerCommand);
+    const clientId = regData.clientId!;
+    const clientSecret = regData.clientSecret!;
+    const clientSecretExpiresAt = regData.clientSecretExpiresAt;
 
-    const regData = await regResponse.json();
-    const { clientId, clientSecret } = regData;
+    console.log(`[OAuth] IAM Identity Center client registered: ${clientId}`);
 
     // 2. 启动设备授权 (使用用户提供的 startUrl)
-    const authResponse = await fetch(`${oidcEndpoint}/device_authorization`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": "KiroIDE",
-      },
-      body: JSON.stringify({
-        clientId,
-        clientSecret,
-        startUrl, // 使用用户提供的 Start URL
-      }),
+    const deviceAuthCommand = new StartDeviceAuthorizationCommand({
+      clientId,
+      clientSecret,
+      startUrl, // 使用用户提供的 Start URL
     });
 
-    if (!authResponse.ok) {
-      const errorText = await authResponse.text();
-      throw new Error(
-        `Device authorization failed: ${authResponse.status} - ${errorText}`
-      );
-    }
-
-    const authData = await authResponse.json();
-    const {
-      deviceCode,
-      userCode,
-      verificationUri,
-      verificationUriComplete,
-      expiresIn,
-      interval,
-    } = authData;
+    const authData = await ssoClient.send(deviceAuthCommand);
+    const deviceCode = authData.deviceCode!;
+    const userCode = authData.userCode!;
+    const verificationUri = authData.verificationUri!;
+    const verificationUriComplete = authData.verificationUriComplete;
+    const expiresIn = authData.expiresIn || 600;
+    const interval = authData.interval || 5;
 
     // 3. 保存会话信息
     activeSessions.set(sessionId, {
@@ -436,9 +413,10 @@ export async function startIdCAuth(
       region,
       clientId,
       clientSecret,
+      clientSecretExpiresAt, // AWS OIDC 客户端凭证过期时间（秒级时间戳）
       deviceCode,
       userCode,
-      interval: interval || 5,
+      interval,
       expiresAt: Date.now() + expiresIn * 1000,
       createdAt: Date.now(),
       status: "pending",
@@ -447,7 +425,7 @@ export async function startIdCAuth(
       reject: undefined,
     });
 
-    console.log(`[OAuth] Started IAM Identity Center session: ${sessionId}`);
+    console.log(`[OAuth] Started IAM Identity Center session: ${sessionId}, clientId: ${clientId}, clientSecret length: ${clientSecret?.length}`);
 
     // 4. 启动后台轮询 (复用 Builder ID 轮询逻辑)
     pollDeviceToken(sessionId);
@@ -480,64 +458,41 @@ export async function startBuilderIDAuth(
   const sessionId = crypto.randomUUID();
 
   try {
+    // 使用 AWS SDK 进行客户端注册和设备授权
+    const ssoClient = new SSOOIDCClient({ region });
+
     // 1. 注册 OIDC 客户端
-    const regResponse = await fetch(
-      `${KIRO_OAUTH_CONFIG.ssoOIDCEndpoint}/client/register`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "KiroIDE",
-        },
-        body: JSON.stringify({
-          clientName: "KiroIDE",
-          clientType: "public",
-          scopes: KIRO_OAUTH_CONFIG.scopes,
-          grantTypes: [
-            "urn:ietf:params:oauth:grant-type:device_code",
-            "refresh_token",
-          ],
-        }),
-      },
-    );
+    const registerCommand = new RegisterClientCommand({
+      clientName: "KiroIDE",
+      clientType: "public",
+      scopes: KIRO_OAUTH_CONFIG.scopes,
+      grantTypes: [
+        "urn:ietf:params:oauth:grant-type:device_code",
+        "refresh_token",
+      ],
+    });
 
-    if (!regResponse.ok) {
-      throw new Error(`Client registration failed: ${regResponse.status}`);
-    }
+    const regData = await ssoClient.send(registerCommand);
+    const clientId = regData.clientId!;
+    const clientSecret = regData.clientSecret!;
+    const clientSecretExpiresAt = regData.clientSecretExpiresAt;
 
-    const regData = await regResponse.json();
-    const { clientId, clientSecret } = regData;
+    console.log(`[OAuth] Builder ID client registered: ${clientId}`);
 
     // 2. 启动设备授权
-    const authResponse = await fetch(
-      `${KIRO_OAUTH_CONFIG.ssoOIDCEndpoint}/device_authorization`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "KiroIDE",
-        },
-        body: JSON.stringify({
-          clientId,
-          clientSecret,
-          startUrl: KIRO_OAUTH_CONFIG.builderIDStartURL,
-        }),
-      },
-    );
+    const deviceAuthCommand = new StartDeviceAuthorizationCommand({
+      clientId,
+      clientSecret,
+      startUrl: KIRO_OAUTH_CONFIG.builderIDStartURL,
+    });
 
-    if (!authResponse.ok) {
-      throw new Error(`Device authorization failed: ${authResponse.status}`);
-    }
-
-    const authData = await authResponse.json();
-    const {
-      deviceCode,
-      userCode,
-      verificationUri,
-      verificationUriComplete,
-      expiresIn,
-      interval,
-    } = authData;
+    const authData = await ssoClient.send(deviceAuthCommand);
+    const deviceCode = authData.deviceCode!;
+    const userCode = authData.userCode!;
+    const verificationUri = authData.verificationUri!;
+    const verificationUriComplete = authData.verificationUriComplete;
+    const expiresIn = authData.expiresIn || 600;
+    const interval = authData.interval || 5;
 
     // 保存会话信息
     activeSessions.set(sessionId, {
@@ -546,9 +501,10 @@ export async function startBuilderIDAuth(
       region,
       clientId,
       clientSecret,
+      clientSecretExpiresAt, // AWS OIDC 客户端凭证过期时间（秒级时间戳）
       deviceCode,
       userCode,
-      interval: interval || 5,
+      interval,
       expiresAt: Date.now() + expiresIn * 1000,
       createdAt: Date.now(),
       status: "pending",
@@ -556,7 +512,7 @@ export async function startBuilderIDAuth(
       reject: undefined,
     });
 
-    console.log(`[OAuth] Started Builder ID session: ${sessionId}`);
+    console.log(`[OAuth] Started Builder ID session: ${sessionId}, clientId: ${clientId}, clientSecret length: ${clientSecret?.length}`);
 
     // 启动后台轮询
     pollDeviceToken(sessionId);
@@ -671,12 +627,6 @@ async function pollDeviceToken(sessionId: string): Promise<void> {
   const { clientId, clientSecret, deviceCode, interval, expiresAt, type } =
     session;
 
-  // 根据会话类型确定 OIDC 端点
-  const oidcEndpoint =
-    type === "identity-center"
-      ? buildIdCOIDCEndpoint(session.region)
-      : KIRO_OAUTH_CONFIG.ssoOIDCEndpoint;
-
   const poll = async (): Promise<void> => {
     if (expiresAt && Date.now() > expiresAt) {
       session.status = "expired";
@@ -692,74 +642,74 @@ async function pollDeviceToken(sessionId: string): Promise<void> {
     }
 
     try {
-      const tokenResponse = await fetch(`${oidcEndpoint}/token`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "KiroIDE",
-        },
-        body: JSON.stringify({
-          clientId,
-          clientSecret,
-          deviceCode,
-          grantType: "urn:ietf:params:oauth:grant-type:device_code",
-        }),
+      // 使用 AWS SDK 进行 token 交换
+      const ssoClient = new SSOOIDCClient({ region: session.region });
+      const tokenCommand = new CreateTokenCommand({
+        clientId,
+        clientSecret,
+        deviceCode,
+        grantType: "urn:ietf:params:oauth:grant-type:device_code",
       });
 
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
+      const tokenData = await ssoClient.send(tokenCommand);
 
-        // 根据会话类型设置 authMethod
-        const authMethod = type === "identity-center" ? "IdC" : "builder-id";
-        const startUrl =
-          type === "identity-center"
-            ? session.startUrl!
-            : KIRO_OAUTH_CONFIG.builderIDStartURL;
+      // 根据会话类型设置 authMethod
+      const authMethod = type === "identity-center" ? "IdC" : "builder-id";
+      const startUrl =
+        type === "identity-center"
+          ? session.startUrl!
+          : KIRO_OAUTH_CONFIG.builderIDStartURL;
 
-        session.status = "completed";
-        session.credentials = {
-          accessToken: tokenData.accessToken,
-          refreshToken: tokenData.refreshToken,
-          expiresAt: new Date(
-            Date.now() + (tokenData.expiresIn || 3600) * 1000
-          ).toISOString(),
-          authMethod,
-          clientId,
-          clientSecret,
-          region: session.region,
-          startUrl,
-          ssoRegion: session.region,
-        };
+      session.status = "completed";
+      session.credentials = {
+        accessToken: tokenData.accessToken!,
+        refreshToken: tokenData.refreshToken!,
+        expiresAt: new Date(
+          Date.now() + (tokenData.expiresIn || 3600) * 1000
+        ).toISOString(),
+        authMethod,
+        clientId,
+        clientSecret,
+        clientSecretExpiresAt: session.clientSecretExpiresAt, // AWS OIDC 客户端凭证过期时间
+        region: session.region,
+        startUrl,
+        ssoRegion: session.region,
+      };
 
-        const typeName =
-          type === "identity-center" ? "IAM Identity Center" : "Builder ID";
-        console.log(`[OAuth] ${typeName} completed for session: ${sessionId}`);
+      const typeName =
+        type === "identity-center" ? "IAM Identity Center" : "Builder ID";
+      console.log(`[OAuth] ${typeName} completed for session: ${sessionId}`);
 
-        if (session.resolve) {
-          session.resolve(session.credentials);
+      if (session.resolve) {
+        session.resolve(session.credentials);
+      }
+      return;
+    } catch (error: any) {
+      // AWS SDK 会抛出特定的异常，需要检查错误名称
+      if (error.name === "AuthorizationPendingException") {
+        // 用户尚未完成授权，继续轮询
+        setTimeout(poll, (interval || 5) * 1000);
+        return;
+      } else if (error.name === "SlowDownException") {
+        // 需要降低轮询频率
+        session.interval = (interval || 5) + 5;
+        setTimeout(poll, session.interval * 1000);
+        return;
+      } else if (error.name === "ExpiredTokenException") {
+        session.status = "expired";
+        session.error = "Device authorization expired";
+        if (session.reject) {
+          session.reject(new Error("Device authorization expired"));
         }
         return;
       }
-
-      const errorData = await tokenResponse.json();
-
-      if (errorData.error === "authorization_pending") {
-        // 继续轮询
-        setTimeout(poll, (interval || 5) * 1000);
-      } else if (errorData.error === "slow_down") {
-        // 增加间隔
-        session.interval = (interval || 5) + 5;
-        setTimeout(poll, session.interval * 1000);
-      } else {
-        session.status = "error";
-        session.error = errorData.error_description || errorData.error;
-        if (session.reject) {
-          session.reject(new Error(session.error));
-        }
-      }
-    } catch (error: any) {
+      // 其他错误
       console.error("[OAuth] Polling error:", error);
-      setTimeout(poll, (interval || 5) * 1000);
+      session.status = "error";
+      session.error = error.message || "Unknown error";
+      if (session.reject) {
+        session.reject(error);
+      }
     }
   };
 
@@ -898,11 +848,12 @@ export async function refreshCredentials(
   options: {
     clientId?: string;
     clientSecret?: string;
+    clientSecretExpiresAt?: number; // AWS OIDC 客户端凭证过期时间戳（秒）
     region?: string;
     startUrl?: string;
   } = {}
 ): Promise<Credentials> {
-  const { clientId, clientSecret, region = "us-east-1", startUrl } = options;
+  const { clientId, clientSecret, clientSecretExpiresAt, region = "us-east-1", startUrl } = options;
 
   if (authMethod === "social") {
     const refreshUrl = `https://prod.${region}.auth.desktop.kiro.dev/refreshToken`;
@@ -933,34 +884,33 @@ export async function refreshCredentials(
       ssoRegion: region,
     };
   } else if (authMethod === "builder-id" || authMethod === "IdC") {
-    // Builder ID 和 IAM Identity Center 使用相同的刷新逻辑
+    // Builder ID 和 IAM Identity Center 使用 AWS SDK
     if (!clientId || !clientSecret) {
       throw new Error(
         `clientId and clientSecret are required for ${authMethod} refresh`
       );
     }
 
-    const refreshUrl = `https://oidc.${region}.amazonaws.com/token`;
-
-    const response = await fetch(refreshUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": "KiroIDE",
-      },
-      body: JSON.stringify({
-        clientId,
-        clientSecret,
-        refreshToken,
-        grantType: "refresh_token",
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Token refresh failed: ${response.status}`);
+    // 检查客户端凭证是否过期（clientSecretExpiresAt 是秒级时间戳）
+    if (clientSecretExpiresAt && clientSecretExpiresAt * 1000 < Date.now()) {
+      throw new Error(
+        "AWS OIDC client credentials have expired. Please re-authenticate using device authorization flow."
+      );
     }
 
-    const data = await response.json();
+    const client = new SSOOIDCClient({ region });
+    const command = new CreateTokenCommand({
+      clientId,
+      clientSecret,
+      grantType: "refresh_token",
+      refreshToken,
+    });
+
+    const response = await client.send(command);
+
+    if (!response.accessToken) {
+      throw new Error("Token refresh failed: No access token in response");
+    }
 
     // 根据 authMethod 确定 startUrl
     const resolvedStartUrl =
@@ -969,14 +919,15 @@ export async function refreshCredentials(
         : KIRO_OAUTH_CONFIG.builderIDStartURL;
 
     return {
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken || refreshToken,
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken || refreshToken,
       expiresAt: new Date(
-        Date.now() + (data.expiresIn || 3600) * 1000
+        Date.now() + (response.expiresIn || 3600) * 1000
       ).toISOString(),
       authMethod, // 保持原有的 authMethod
       clientId,
       clientSecret,
+      clientSecretExpiresAt, // 保持客户端凭证过期时间
       region,
       startUrl: resolvedStartUrl,
       ssoRegion: region,

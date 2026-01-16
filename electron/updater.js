@@ -126,11 +126,26 @@ export async function checkForUpdates() {
     };
 
     const result = await autoUpdater.checkForUpdates();
+    const currentVersion = app.getVersion();
+    const latestVersion = result?.updateInfo?.version;
+
+    // 直接比较版本号判断是否有更新
+    // 注意：事件 (update-available/update-not-available) 在 Promise resolve 之后才触发
+    // 所以不能依赖 updateStatus.available，需要直接比较版本号
+    const updateAvailable = latestVersion !== currentVersion;
+
+    console.log(`[Updater] Current: ${currentVersion}, Latest: ${latestVersion}, Update available: ${updateAvailable}`);
+
+    // 同步更新状态
+    updateStatus.checking = false;
+    updateStatus.available = updateAvailable;
+    updateStatus.version = latestVersion;
 
     return {
       success: true,
-      updateAvailable: updateStatus.available,
-      version: result?.updateInfo?.version || null,
+      updateAvailable,
+      version: latestVersion || null,
+      currentVersion,
     };
   } catch (error) {
     updateStatus.error = error.message;

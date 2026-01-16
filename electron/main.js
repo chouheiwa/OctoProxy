@@ -12,7 +12,7 @@ import {
   getAutoLaunchEnabled,
   setAutoLaunchEnabled,
 } from "./autoLaunch.js";
-import { checkForUpdates, getUpdateStatus } from "./updater.js";
+import { checkForUpdates, getUpdateStatus, downloadUpdate, installUpdate } from "./updater.js";
 import { initLogger, getLogDir, getLogFiles, readLogFile, cleanOldLogs, closeLogger } from "./logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -607,6 +607,16 @@ function registerIpcHandlers() {
   // 获取更新状态
   ipcMain.handle("get-update-status", () => {
     return getUpdateStatus();
+  });
+
+  // 下载更新
+  ipcMain.handle("download-update", async () => {
+    return await downloadUpdate();
+  });
+
+  // 安装更新
+  ipcMain.handle("install-update", () => {
+    installUpdate();
   });
 
   // 获取开机自启状态

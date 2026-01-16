@@ -5,6 +5,9 @@
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 import { BrowserWindow } from "electron";
+import { execSync } from "child_process";
+import path from "path";
+import { app } from "electron";
 
 let updateStatus = {
   checking: false,
@@ -85,6 +88,12 @@ export function initUpdater() {
       downloaded: true,
       progress: null,
     };
+
+    // macOS: 清理下载文件的隔离属性，避免下次启动时 Gatekeeper 警告
+    if (process.platform === 'darwin') {
+      clearDownloadedFileQuarantine();
+    }
+
     sendStatusToWindow("update-downloaded", info);
   });
 }
@@ -158,4 +167,33 @@ export function installUpdate() {
  */
 export function getUpdateStatus() {
   return { ...updateStatus };
+}
+
+/**
+ * 清理下载文件的 macOS 隔离属性
+ * 在更新下载完成后执行，确保安装后的应用不会被 Gatekeeper 拦截
+ */
+function clearDownloadedFileQuarantine() {
+  try {
+    // electron-updater 的缓存目录
+    const appName = app.getName();
+    const cacheDir = path.join(
+      app.getPath('home'),
+      'Library/Caches',
+      `${appName.toLowerCase()}-updater`
+    );
+
+    console.log('[Updater] Clearing quarantine attributes from:', cacheDir);
+
+    // 清理整个缓存目录的隔离属性
+    execSync(`xattr -cr "${cacheDir}"`, {
+      stdio: 'ignore',
+      timeout: 10000,
+    });
+
+    console.log('[Updater] Quarantine attributes cleared successfully');
+  } catch (error) {
+    // 静默处理错误，不影响更新流程
+    console.warn('[Updater] Failed to clear quarantine attributes:', error.message);
+  }
 }

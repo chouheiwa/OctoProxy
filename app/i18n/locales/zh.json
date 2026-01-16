@@ -206,7 +206,8 @@
     "deleteFailed": "删除失败",
     "authFailed": "认证失败：{{error}}",
     "operationFailed": "操作失败",
-    "checkUpdateFailed": "检查更新失败"
+    "checkUpdateFailed": "检查更新失败",
+    "downloadFailed": "下载失败"
   },
   "settings": {
     "title": "设置",
@@ -252,6 +253,9 @@
     "autoLaunchDesc": "系统启动时自动运行应用",
     "autoLaunchEnabled": "已启用开机自启动",
     "autoLaunchDisabled": "已禁用开机自启动",
+    "downloadUpdate": "下载更新",
+    "installUpdate": "安装更新并重启",
+    "updateDownloaded": "更新已下载完成",
     "apiSettings": "API 设置",
     "systemPrompt": "System Prompt",
     "systemPromptDesc": "转发请求时自动注入的 System Prompt，会添加到每个请求的 system 字段中",

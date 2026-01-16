@@ -19,6 +19,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // 获取更新状态
   getUpdateStatus: () => ipcRenderer.invoke("get-update-status"),
 
+  // 下载更新
+  downloadUpdate: () => ipcRenderer.invoke("download-update"),
+
+  // 安装更新
+  installUpdate: () => ipcRenderer.invoke("install-update"),
+
   // 获取开机自启状态
   getAutoLaunch: () => ipcRenderer.invoke("get-auto-launch"),
 

@@ -206,7 +206,8 @@
     "deleteFailed": "Failed to delete",
     "authFailed": "Authentication failed: {{error}}",
     "operationFailed": "Operation failed",
-    "checkUpdateFailed": "Failed to check for updates"
+    "checkUpdateFailed": "Failed to check for updates",
+    "downloadFailed": "Failed to download update"
   },
   "settings": {
     "title": "Settings",
@@ -252,6 +253,9 @@
     "autoLaunchDesc": "Automatically start the app when system boots",
     "autoLaunchEnabled": "Launch at startup enabled",
     "autoLaunchDisabled": "Launch at startup disabled",
+    "downloadUpdate": "Download Update",
+    "installUpdate": "Install Update and Restart",
+    "updateDownloaded": "Update downloaded successfully",
     "apiSettings": "API Settings",
     "systemPrompt": "System Prompt",
     "systemPromptDesc": "System prompt to inject when forwarding requests, will be added to the system field of each request",

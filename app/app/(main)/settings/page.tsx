@@ -17,6 +17,7 @@ import {
   Switch,
   Input,
   Space,
+  Progress,
 } from "antd";
 import {
   SettingOutlined,
@@ -86,6 +87,13 @@ interface UpdateStatus {
   error?: string;
 }
 
+interface DownloadProgress {
+  percent: number;
+  transferred: number;
+  total: number;
+  bytesPerSecond: number;
+}
+
 export default function Settings() {
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,12 +108,22 @@ export default function Settings() {
   const [autoLaunchLoading, setAutoLaunchLoading] = useState(false);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
 
   useEffect(() => {
     loadConfig();
     if (isElectron()) {
       loadElectronSettings();
+      setupUpdateListeners();
     }
+
+    return () => {
+      if (isElectron()) {
+        cleanupUpdateListeners();
+      }
+    };
   }, []);
 
   // 当 config 加载完成且不在 loading 状态时，设置表单值
@@ -149,6 +167,35 @@ export default function Settings() {
     } catch (err) {
       console.error("Failed to load Electron settings:", err);
     }
+  };
+
+  const setupUpdateListeners = () => {
+    const electronAPI = (window as any).electronAPI;
+
+    // 监听下载进度
+    electronAPI.onUpdateProgress?.((progress: DownloadProgress) => {
+      setDownloadProgress(progress);
+    });
+
+    // 监听下载完成
+    electronAPI.onUpdateDownloaded?.((info: any) => {
+      setDownloading(false);
+      setUpdateDownloaded(true);
+      message.success(t("settings.updateDownloaded"));
+    });
+
+    // 监听下载错误
+    electronAPI.onUpdateError?.((error: string) => {
+      setDownloading(false);
+      message.error(t("errors.downloadFailed", { error }));
+    });
+  };
+
+  const cleanupUpdateListeners = () => {
+    const electronAPI = (window as any).electronAPI;
+    electronAPI.removeAllListeners?.("update-progress");
+    electronAPI.removeAllListeners?.("update-downloaded");
+    electronAPI.removeAllListeners?.("update-error");
   };
 
   const handleSave = async (values: any) => {
@@ -223,6 +270,25 @@ export default function Settings() {
     } finally {
       setUpdateChecking(false);
     }
+  };
+
+  const handleDownloadUpdate = async () => {
+    try {
+      setDownloading(true);
+      setDownloadProgress(null);
+      const result = await (window as any).electronAPI.downloadUpdate();
+      if (!result.success) {
+        message.error(result.error || t("errors.downloadFailed"));
+        setDownloading(false);
+      }
+    } catch (err: any) {
+      message.error(err.message || t("errors.downloadFailed"));
+      setDownloading(false);
+    }
+  };
+
+  const handleInstallUpdate = () => {
+    (window as any).electronAPI.installUpdate();
   };
 
   const strategyOptions = [
@@ -328,26 +394,67 @@ export default function Settings() {
             </div>
 
             {updateStatus && (
-              <Alert
-                type={
-                  updateStatus.type === "available"
-                    ? "info"
-                    : updateStatus.type === "error"
-                      ? "error"
-                      : "success"
-                }
-                message={
-                  updateStatus.type === "available"
-                    ? t("settings.updateAvailableMsg", {
-                        version: updateStatus.version,
-                      })
-                    : updateStatus.type === "error"
-                      ? updateStatus.error
-                      : t("settings.upToDateMsg")
-                }
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
+              <>
+                <Alert
+                  type={
+                    updateStatus.type === "available"
+                      ? "info"
+                      : updateStatus.type === "error"
+                        ? "error"
+                        : "success"
+                  }
+                  message={
+                    updateStatus.type === "available"
+                      ? t("settings.updateAvailableMsg", {
+                          version: updateStatus.version,
+                        })
+                      : updateStatus.type === "error"
+                        ? updateStatus.error
+                        : t("settings.upToDateMsg")
+                  }
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                />
+
+                {/* 下载按钮 */}
+                {updateStatus.type === "available" && !downloading && !updateDownloaded && (
+                  <Button
+                    type="primary"
+                    icon={<DownloadOutlined />}
+                    onClick={handleDownloadUpdate}
+                    style={{ marginBottom: 16 }}
+                  >
+                    {t("settings.downloadUpdate")}
+                  </Button>
+                )}
+
+                {/* 下载进度 */}
+                {downloading && downloadProgress && (
+                  <div style={{ marginBottom: 16 }}>
+                    <Progress
+                      percent={Math.round(downloadProgress.percent)}
+                      status="active"
+                    />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {(downloadProgress.transferred / 1024 / 1024).toFixed(2)} MB / {(downloadProgress.total / 1024 / 1024).toFixed(2)} MB
+                      ({(downloadProgress.bytesPerSecond / 1024 / 1024).toFixed(2)} MB/s)
+                    </Text>
+                  </div>
+                )}
+
+                {/* 安装按钮 */}
+                {updateDownloaded && (
+                  <Button
+                    type="primary"
+                    danger
+                    icon={<RocketOutlined />}
+                    onClick={handleInstallUpdate}
+                    style={{ marginBottom: 16 }}
+                  >
+                    {t("settings.installUpdate")}
+                  </Button>
+                )}
+              </>
             )}
           </div>
 

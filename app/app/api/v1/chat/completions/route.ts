@@ -10,6 +10,7 @@ import { executeWithRetry, executeStream } from '@/lib/pool/manager'
 import * as openaiConverter from '@/lib/converters/openai'
 import { KIRO_MODELS } from '@/lib/kiro/constants'
 import { getConfig } from '@/lib/config'
+import { ContextLimitExceededError } from '@/lib/kiro/service'
 
 export async function POST(request: NextRequest) {
   // 认证
@@ -93,22 +94,69 @@ export async function POST(request: NextRequest) {
       return service.streamApi(model, requestBody)
     })
 
+    // 包装生成器，用于在流开始前捕获错误
+    async function* wrappedGenerator() {
+      try {
+        for await (const chunk of openaiConverter.convertStreamToOpenAI(streamGenerator, model)) {
+          yield chunk
+        }
+      } catch (error: any) {
+        // 重新抛出错误，让外层处理
+        throw error
+      }
+    }
+
+    // 尝试获取第一个 chunk，如果失败则直接返回 HTTP 错误
+    const generator = wrappedGenerator()
+    let firstChunk: string | undefined
+    try {
+      const result = await generator.next()
+      if (!result.done) {
+        firstChunk = result.value
+      }
+    } catch (error: any) {
+      console.error('[API] Stream initialization error:', error.message)
+      // 上下文超限错误 - 直接返回 HTTP 400
+      if (error instanceof ContextLimitExceededError) {
+        return NextResponse.json(error.toOpenAIErrorResponse(), { status: 400 })
+      }
+      // 其他错误 - 返回 HTTP 500
+      return NextResponse.json(
+        openaiConverter.createErrorResponse(error.message, 'server_error'),
+        { status: 500 }
+      )
+    }
+
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of openaiConverter.convertStreamToOpenAI(streamGenerator, model)) {
+          // 发送第一个 chunk
+          if (firstChunk) {
+            controller.enqueue(encoder.encode(firstChunk))
+          }
+          // 继续发送剩余的 chunks
+          for await (const chunk of generator) {
             controller.enqueue(encoder.encode(chunk))
           }
           controller.close()
         } catch (error: any) {
           console.error('[API] Stream error:', error.message)
-          controller.enqueue(
-            encoder.encode(
-              openaiConverter.formatSSE({
-                error: { message: error.message, type: 'server_error' },
-              })
+          // 检查是否是上下文超限错误
+          if (error instanceof ContextLimitExceededError) {
+            controller.enqueue(
+              encoder.encode(
+                openaiConverter.formatSSE(error.toOpenAIErrorResponse())
+              )
             )
-          )
+          } else {
+            controller.enqueue(
+              encoder.encode(
+                openaiConverter.formatSSE({
+                  error: { message: error.message, type: 'server_error' },
+                })
+              )
+            )
+          }
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
           controller.close()
         }
@@ -135,6 +183,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response)
     } catch (error: any) {
       console.error('[API] Request error:', error.message)
+      // 检查是否是上下文超限错误
+      if (error instanceof ContextLimitExceededError) {
+        return NextResponse.json(error.toOpenAIErrorResponse(), { status: 400 })
+      }
       return NextResponse.json(
         openaiConverter.createErrorResponse(error.message, 'server_error'),
         { status: 500 }

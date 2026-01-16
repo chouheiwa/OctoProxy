@@ -122,6 +122,53 @@ export interface ModelInfo {
 }
 
 /**
+ * 上下文超限错误
+ * 当 Kiro API 返回 "Input is too long" / "CONTENT_LENGTH_EXCEEDS_THRESHOLD" 时抛出
+ * 转换为 Claude API 标准格式，让 Claude Code 能识别并触发 auto-compact
+ */
+export class ContextLimitExceededError extends Error {
+  public readonly type = "invalid_request_error";
+  public readonly status = 400;
+
+  constructor(originalMessage?: string, estimatedTokens?: number) {
+    // 使用 Anthropic API 完全一致的错误消息格式
+    // 格式: "prompt is too long: X tokens > Y maximum"
+    const tokens = estimatedTokens || 200001;
+    const maximum = 200000;
+    const message = `prompt is too long: ${tokens} tokens > ${maximum} maximum`;
+    super(message);
+    this.name = "ContextLimitExceededError";
+  }
+
+  /**
+   * 转换为 Claude API 标准错误格式
+   * 与 Anthropic API 完全一致的格式
+   */
+  toClaudeErrorResponse() {
+    return {
+      type: "error",
+      error: {
+        type: this.type,
+        message: this.message,
+      },
+    };
+  }
+
+  /**
+   * 转换为 OpenAI API 标准错误格式
+   */
+  toOpenAIErrorResponse() {
+    return {
+      error: {
+        type: this.type,
+        message: this.message,
+        code: "context_length_exceeded",
+      },
+    };
+  }
+}
+
+/**
  * 根据配置生成唯一的机器码
  */
 function generateMachineIdFromConfig(credentials: KiroCredentials): string {
@@ -749,6 +796,32 @@ export class KiroService {
       return response;
     } catch (error: any) {
       const status = error.response?.status;
+      const errorData = error.response?.data;
+
+      // 打印详细的错误信息，包括响应体
+      if (error.response) {
+        console.error(`[Kiro] API error - Status: ${status}`);
+        console.error(`[Kiro] Response headers:`, JSON.stringify(error.response.headers || {}));
+        if (errorData) {
+          console.error(`[Kiro] Response body:`, JSON.stringify(errorData));
+        }
+      } else {
+        console.error(`[Kiro] API error (no response):`, error.message);
+      }
+
+      // 检测上下文超限错误并转换为标准格式
+      if (status === 400 && errorData) {
+        const reason = errorData.reason || '';
+        const message = errorData.message || '';
+        if (
+          reason === 'CONTENT_LENGTH_EXCEEDS_THRESHOLD' ||
+          message.toLowerCase().includes('input is too long') ||
+          message.toLowerCase().includes('too long')
+        ) {
+          console.error(`[Kiro] Context limit exceeded, throwing ContextLimitExceededError`);
+          throw new ContextLimitExceededError(message);
+        }
+      }
 
       if (status === 403 && !isRetry) {
         console.log("[Kiro] Received 403, refreshing token...");
@@ -958,6 +1031,53 @@ export class KiroService {
       if (stream && typeof stream.destroy === "function") stream.destroy();
 
       const status = error.response?.status;
+      let errorData: any = null;
+
+      // 打印详细的错误信息，包括响应体
+      if (error.response) {
+        console.error(`[Kiro] Stream API error - Status: ${status}`);
+        console.error(`[Kiro] Response headers:`, JSON.stringify(error.response.headers || {}));
+        // 尝试读取响应体内容
+        if (error.response.data) {
+          // 如果 data 是流，尝试收集它
+          if (typeof error.response.data.on === 'function') {
+            let errorBody = '';
+            try {
+              for await (const chunk of error.response.data) {
+                errorBody += chunk.toString();
+              }
+              console.error(`[Kiro] Response body:`, errorBody);
+              // 尝试解析 JSON
+              try {
+                errorData = JSON.parse(errorBody);
+              } catch {
+                errorData = { message: errorBody };
+              }
+            } catch (e) {
+              console.error(`[Kiro] Could not read response stream:`, e);
+            }
+          } else {
+            console.error(`[Kiro] Response body:`, JSON.stringify(error.response.data));
+            errorData = error.response.data;
+          }
+        }
+      } else {
+        console.error(`[Kiro] Stream API error (no response):`, error.message);
+      }
+
+      // 检测上下文超限错误并转换为标准格式
+      if (status === 400 && errorData) {
+        const reason = errorData.reason || '';
+        const message = errorData.message || '';
+        if (
+          reason === 'CONTENT_LENGTH_EXCEEDS_THRESHOLD' ||
+          message.toLowerCase().includes('input is too long') ||
+          message.toLowerCase().includes('too long')
+        ) {
+          console.error(`[Kiro] Context limit exceeded, throwing ContextLimitExceededError`);
+          throw new ContextLimitExceededError(message);
+        }
+      }
 
       if (status === 403 && !isRetry) {
         await this.refreshAccessToken();

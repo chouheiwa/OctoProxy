@@ -17,7 +17,7 @@ import {
   updateProviderAccountEmail,
   Provider,
 } from "@/lib/db/providers";
-import { KiroService, KiroCredentials } from "@/lib/kiro/service";
+import { KiroService, KiroCredentials, ContextLimitExceededError } from "@/lib/kiro/service";
 import { DEFAULT_HEALTH_CHECK_MODEL } from "@/lib/kiro/constants";
 import { getConfig, Config } from "@/lib/config";
 import { formatKiroUsage, calculateTotalUsage } from "@/lib/kiro/usage-formatter";
@@ -435,6 +435,12 @@ export async function executeWithRetry<T>(
 
       return result;
     } catch (error: any) {
+      // 上下文超限错误是客户端问题，不应该重试，也不应该影响 provider 健康状态
+      if (error instanceof ContextLimitExceededError || error.name === "ContextLimitExceededError") {
+        console.error(`[Pool] Context limit exceeded, not retrying`);
+        throw error;
+      }
+
       lastError = error;
       attempts++;
 
@@ -488,8 +494,11 @@ export async function* executeStream<T>(
     // 成功完成，重置错误计数
     reportSuccess(provider.id);
   } catch (error: any) {
-    // 报告错误
-    reportError(provider.id, error.message);
+    // 上下文超限错误是客户端问题，不应该影响 provider 健康状态
+    if (!(error instanceof ContextLimitExceededError || error.name === "ContextLimitExceededError")) {
+      // 报告错误（非上下文超限错误才报告）
+      reportError(provider.id, error.message);
+    }
     throw error;
   }
 }

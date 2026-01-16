@@ -318,6 +318,10 @@ export async function* convertStreamToOpenAI(
   } catch (error: any) {
     // 发送错误信息
     console.error("[OpenAI Converter] Stream error:", error.message);
+    // 如果是上下文超限错误，重新抛出让外层处理
+    if (error.name === "ContextLimitExceededError") {
+      throw error;
+    }
     finishReason = "error";
   }
 

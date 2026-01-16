@@ -79,10 +79,11 @@ async function findAvailablePort(startPort, maxAttempts = 10) {
 // 获取应用路径
 export function getAppPaths() {
   const isPackaged = app.isPackaged;
+  // 统一使用 userData 目录存储数据（开发和生产模式共享同一数据库）
+  const userData = app.getPath("userData");
 
   if (isPackaged) {
-    // 打包后: 使用 userData 目录存储数据
-    const userData = app.getPath("userData");
+    // 打包后: 资源文件从 resources 目录获取
     const resources = process.resourcesPath;
 
     return {
@@ -94,11 +95,11 @@ export function getAppPaths() {
       isPackaged: true,
     };
   } else {
-    // 开发模式: 使用项目目录
+    // 开发模式: 数据存储使用 userData 目录（与生产模式共享），其他资源从项目目录获取
     const projectRoot = path.resolve(__dirname, "..");
     return {
-      configDir: path.join(projectRoot, "configs"),
-      dataDir: path.join(projectRoot, "data"),
+      configDir: path.join(userData, "configs"),
+      dataDir: path.join(userData, "data"),
       staticDir: path.join(projectRoot, "static"),
       migrationsDir: path.join(projectRoot, "app", "lib", "db", "migrations"),
       isElectron: true,

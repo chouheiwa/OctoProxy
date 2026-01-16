@@ -34,9 +34,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // 刷新 token
     const newCredentials = await service.refreshAccessToken()
 
+    // 合并原有凭据和新凭据，保留 clientId, clientSecret 等字段
+    const updatedCredentials = {
+      ...credentials,  // 保留原有的所有字段
+      ...newCredentials,  // 用新的 token 覆盖
+    }
+
     // 更新数据库中的凭据
     updateProvider(providerId, {
-      credentials: JSON.stringify(newCredentials),
+      credentials: JSON.stringify(updatedCredentials),
     })
 
     return NextResponse.json({

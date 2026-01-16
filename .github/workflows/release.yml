@@ -72,6 +72,8 @@ jobs:
           path: |
             dist-electron/*.dmg
             dist-electron/*.zip
+            dist-electron/*.yml
+            dist-electron/*.blockmap
           retention-days: 7
 
       - name: Upload artifacts (Windows)
@@ -81,6 +83,8 @@ jobs:
           name: octo-proxy-win
           path: |
             dist-electron/*.exe
+            dist-electron/*.yml
+            dist-electron/*.blockmap
           retention-days: 7
 
   # Docker 构建
@@ -166,6 +170,8 @@ jobs:
             artifacts/**/*.dmg
             artifacts/**/*.zip
             artifacts/**/*.exe
+            artifacts/**/*.yml
+            artifacts/**/*.blockmap
           body: |
             ## OctoProxy ${{ github.ref_name }}
 

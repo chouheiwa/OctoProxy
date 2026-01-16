@@ -354,8 +354,255 @@ interface CollectedToolCall {
 }
 
 /**
+ * 括号匹配函数 - 用于解析嵌套的 JSON 结构
+ */
+function findMatchingBracket(
+  text: string,
+  startPos: number,
+  openChar: string = "[",
+  closeChar: string = "]"
+): number {
+  if (!text || startPos >= text.length || text[startPos] !== openChar)
+    return -1;
+
+  let bracketCount = 1;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = startPos + 1; i < text.length; i++) {
+    const char = text[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (char === "\\" && inString) {
+      escapeNext = true;
+      continue;
+    }
+    if (char === '"' && !escapeNext) {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === openChar) bracketCount++;
+      else if (char === closeChar) {
+        bracketCount--;
+        if (bracketCount === 0) return i;
+      }
+    }
+  }
+  return -1;
+}
+
+/**
+ * 修复 JSON 格式问题
+ */
+function repairJson(jsonStr: string): string {
+  let repaired = jsonStr;
+  repaired = repaired.replace(/,\s*([}\]])/g, "$1");
+  repaired = repaired.replace(/([{,]\s*)([a-zA-Z0-9_]+?)\s*:/g, '$1"$2":');
+  return repaired;
+}
+
+/**
+ * 生成符合 Anthropic 格式的 tool_use ID
+ * 格式: toolu_01XXXXXXXXXXXXXXXXXXXXXX (toolu_ + 24个字符)
+ */
+function generateToolUseId(): string {
+  return `toolu_${uuidv4().replace(/-/g, "").substring(0, 24)}`;
+}
+
+/**
+ * 标准化 tool_use ID 格式
+ * Anthropic API 期望格式: toolu_XXXXXXXXXXXXXXXXXXXXXXXX
+ */
+function normalizeToolUseId(rawId: string | undefined): string {
+  if (!rawId) {
+    return generateToolUseId();
+  }
+
+  // 如果已经是 toolu_ 格式，直接返回
+  if (rawId.startsWith('toolu_')) {
+    return rawId;
+  }
+
+  // 如果是其他格式（如 tooluse_xxx），转换为 toolu_ 格式
+  // 提取数字/字母部分，生成新的 ID
+  const alphanumeric = rawId.replace(/[^a-zA-Z0-9]/g, '');
+  if (alphanumeric.length >= 24) {
+    return `toolu_${alphanumeric.substring(0, 24)}`;
+  }
+
+  // 如果提取的字符不够，补充随机字符
+  const padding = uuidv4().replace(/-/g, '').substring(0, 24 - alphanumeric.length);
+  return `toolu_${alphanumeric}${padding}`;
+}
+
+/**
+ * 解析单个文本格式的工具调用
+ * 支持格式: [Called ToolName (tooluse_xxx) with args: {...}]
+ */
+function parseSingleBracketToolCall(toolCallText: string): CollectedToolCall | null {
+  // 匹配工具名称和可选的 toolUseId
+  const namePattern = /\[Called\s+(\w+)\s*(?:\(([^)]+)\))?\s*with\s+args:/i;
+  const nameMatch = toolCallText.match(namePattern);
+  if (!nameMatch) {
+    console.log("[Claude Converter] Failed to match tool call pattern:", toolCallText.substring(0, 100));
+    return null;
+  }
+
+  const toolName = nameMatch[1].trim();
+  // 标准化 tool_use ID 格式
+  const toolUseId = normalizeToolUseId(nameMatch[2]?.trim());
+
+  const argsStartMarker = "with args:";
+  const argsStartPos = toolCallText
+    .toLowerCase()
+    .indexOf(argsStartMarker.toLowerCase());
+  if (argsStartPos === -1) return null;
+
+  const argsStart = argsStartPos + argsStartMarker.length;
+  const argsEnd = toolCallText.lastIndexOf("]");
+  if (argsEnd <= argsStart) return null;
+
+  const jsonCandidate = toolCallText.substring(argsStart, argsEnd).trim();
+
+  try {
+    const repairedJson = repairJson(jsonCandidate);
+    const argumentsObj = JSON.parse(repairedJson);
+    if (typeof argumentsObj !== "object" || argumentsObj === null) {
+      // 解析成功但不是对象，使用原始字符串
+      console.log(`[Claude Converter] Parsed non-object for ${toolName}, using raw input`);
+      return {
+        toolUseId,
+        name: toolName,
+        input: jsonCandidate,
+      };
+    }
+
+    console.log(`[Claude Converter] Successfully parsed tool call: ${toolName} (${toolUseId})`);
+    return {
+      toolUseId,
+      name: toolName,
+      input: JSON.stringify(argumentsObj),
+    };
+  } catch (e: any) {
+    // JSON 解析失败，但仍然返回工具调用（使用原始字符串作为 input）
+    console.log(`[Claude Converter] JSON parse failed for ${toolName}: ${e.message}, using raw input`);
+    return {
+      toolUseId,
+      name: toolName,
+      input: jsonCandidate,
+    };
+  }
+}
+
+/**
+ * 从文本内容中解析所有 bracket 格式的工具调用
+ * 格式: [Called ToolName (tooluse_xxx) with args: {...}]
+ */
+function parseBracketToolCalls(responseText: string): CollectedToolCall[] {
+  if (!responseText || !responseText.includes("[Called")) return [];
+
+  const toolCalls: CollectedToolCall[] = [];
+  let searchPos = 0;
+
+  while (searchPos < responseText.length) {
+    // 查找下一个 [Called
+    const callStart = responseText.indexOf("[Called", searchPos);
+    if (callStart === -1) break;
+
+    // 从 callStart 位置开始，查找匹配的结束括号
+    const segment = responseText.substring(callStart);
+    const bracketEnd = findMatchingBracket(segment, 0);
+
+    if (bracketEnd === -1) {
+      // 没有找到匹配的结束括号，尝试查找最后一个 ]
+      const lastBracket = segment.indexOf("]");
+      if (lastBracket === -1) {
+        // 完全没有结束括号，跳过
+        searchPos = callStart + "[Called".length;
+        continue;
+      }
+      // 使用找到的第一个 ] 作为结束位置
+      const toolCallText = segment.substring(0, lastBracket + 1);
+      const parsedCall = parseSingleBracketToolCall(toolCallText);
+      if (parsedCall) {
+        toolCalls.push(parsedCall);
+        console.log(`[Claude Converter] Parsed tool call at pos ${callStart}: ${parsedCall.name}(${parsedCall.toolUseId})`);
+      }
+      searchPos = callStart + lastBracket + 1;
+    } else {
+      // 找到匹配的结束括号
+      const toolCallText = segment.substring(0, bracketEnd + 1);
+      const parsedCall = parseSingleBracketToolCall(toolCallText);
+      if (parsedCall) {
+        toolCalls.push(parsedCall);
+        console.log(`[Claude Converter] Parsed tool call at pos ${callStart}: ${parsedCall.name}(${parsedCall.toolUseId})`);
+      }
+      searchPos = callStart + bracketEnd + 1;
+    }
+  }
+
+  return toolCalls;
+}
+
+/**
+ * 去重工具调用 - 基于 name + input 组合
+ */
+function deduplicateToolCalls(toolCalls: CollectedToolCall[]): CollectedToolCall[] {
+  const seen = new Set<string>();
+  const uniqueToolCalls: CollectedToolCall[] = [];
+  for (const tc of toolCalls) {
+    const key = `${tc.name}-${tc.input}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueToolCalls.push(tc);
+    }
+  }
+  return uniqueToolCalls;
+}
+
+/**
+ * 从文本中移除已解析的工具调用文本
+ */
+function removeToolCallsFromText(text: string): string {
+  if (!text || !text.includes("[Called")) return text;
+
+  // 移除所有 [Called ... ] 格式的文本
+  let result = text;
+  const callPositions: number[] = [];
+  let start = 0;
+  while (true) {
+    const pos = result.indexOf("[Called", start);
+    if (pos === -1) break;
+    callPositions.push(pos);
+    start = pos + 1;
+  }
+
+  // 从后向前移除，避免位置偏移
+  for (let i = callPositions.length - 1; i >= 0; i--) {
+    const startPos = callPositions[i];
+    const segment = result.substring(startPos);
+    const bracketEnd = findMatchingBracket(segment, 0);
+
+    if (bracketEnd !== -1) {
+      result = result.substring(0, startPos) + result.substring(startPos + bracketEnd + 1);
+    } else {
+      const lastBracket = segment.indexOf("]");
+      if (lastBracket !== -1) {
+        result = result.substring(0, startPos) + result.substring(startPos + lastBracket + 1);
+      }
+    }
+  }
+
+  // 清理多余的空白
+  return result.replace(/\n\s*\n/g, '\n').trim();
+}
+
+/**
  * 生成 Claude 格式的流式响应
- * 采用参考实现的策略：先收集所有工具调用，在流结束后统一发送
+ * 策略：直接流式发送文本，在流结束后检测并解析文本格式的工具调用
  */
 export async function* convertStreamToClaude(
   kiroStream: AsyncGenerator<KiroStreamEvent>,
@@ -367,9 +614,12 @@ export async function* convertStreamToClaude(
   let contentStarted = false;
   let textBlockIndex = 0;
 
-  // 工具调用收集
+  // 工具调用收集（来自原生事件）
   const toolCalls: CollectedToolCall[] = [];
   let currentToolCall: CollectedToolCall | null = null;
+
+  // 收集完整的文本内容（用于在流结束后检测文本格式的工具调用）
+  let fullTextContent = "";
 
   // 发送 message_start
   yield createMessageStart(id, model);
@@ -383,6 +633,9 @@ export async function* convertStreamToClaude(
 
       // Kiro 返回的事件格式: { type: "content", content: "..." }
       if (event.type === "content" && event.content) {
+        // 累积文本内容
+        fullTextContent += event.content;
+
         // 首次收到内容时发送 content_block_start
         if (!contentStarted) {
           yield createContentBlockStart(textBlockIndex);
@@ -424,7 +677,6 @@ export async function* convertStreamToClaude(
         }
       } else if (event.type === "toolUseStop") {
         // 工具调用结束 - 保存当前工具调用
-        // toolUseStop 事件本身就表示结束，不需要额外检查 stop 值
         if (currentToolCall) {
           toolCalls.push(currentToolCall);
           currentToolCall = null;
@@ -450,13 +702,33 @@ export async function* convertStreamToClaude(
     yield createContentBlockStop(textBlockIndex);
   }
 
+  // 检测文本内容中的 bracket 格式工具调用
+  // 格式: [Called ToolName (tooluse_xxx) with args: {...}]
+  let bracketToolCalls: CollectedToolCall[] = [];
+  if (fullTextContent.includes("[Called")) {
+    bracketToolCalls = parseBracketToolCalls(fullTextContent);
+    if (bracketToolCalls.length > 0) {
+      console.log("[Claude Converter] Detected bracket-style tool calls in text:",
+        bracketToolCalls.map(tc => `${tc.name}(${tc.toolUseId})`).join(', '));
+    }
+  }
+
+  // 合并原生工具调用和文本格式工具调用
+  const allToolCalls = [...toolCalls, ...bracketToolCalls];
+  console.log("[Claude Converter] Total tool calls before dedup:", allToolCalls.length);
+  console.log("[Claude Converter] Tool call IDs:", allToolCalls.map(tc => tc.toolUseId));
+
+  // 去重
+  const uniqueToolCalls = deduplicateToolCalls(allToolCalls);
+  console.log("[Claude Converter] Tool calls after dedup:", uniqueToolCalls.length);
+
   // 在流结束后统一发送所有工具调用事件
-  if (toolCalls.length > 0) {
-    console.log("[Claude Converter] Sending tool calls:", toolCalls.map(tc => tc.name).join(', '));
+  if (uniqueToolCalls.length > 0) {
+    console.log("[Claude Converter] Sending tool calls:", uniqueToolCalls.map(tc => tc.name).join(', '));
 
     const baseIndex = textBlockIndex + (contentStarted ? 1 : 0);
-    for (let i = 0; i < toolCalls.length; i++) {
-      const tc = toolCalls[i];
+    for (let i = 0; i < uniqueToolCalls.length; i++) {
+      const tc = uniqueToolCalls[i];
       const blockIndex = baseIndex + i;
 
       // 解析 input 为对象（如果是字符串的话）

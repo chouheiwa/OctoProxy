@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticateAdmin } from '@/lib/middleware/auth'
 import { getProviderById, updateProviderUsageData } from '@/lib/db/providers'
 import { KiroService } from '@/lib/kiro/service'
-import { formatKiroUsage } from '@/lib/kiro/usage-formatter'
+import { formatKiroUsage, calculateTotalUsage } from '@/lib/kiro/usage-formatter'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -34,9 +34,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       try {
         const cachedUsage = JSON.parse(provider.cached_usage_data)
         const breakdown = cachedUsage?.usageBreakdown?.[0]
-        const used = breakdown?.currentUsage || 0
-        const limit = breakdown?.usageLimit || 0
-        const percent = limit > 0 ? Math.round((used / limit) * 100) : 0
+        const { used, limit, percent } = calculateTotalUsage(breakdown)
         const exhausted = percent >= 100
 
         return NextResponse.json({
@@ -63,11 +61,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       const rawUsage = await service.getUsageLimits()
       const formattedUsage = formatKiroUsage(rawUsage)
 
-      // 从格式化数据中提取用量
+      // 从格式化数据中提取用量（包括免费试用和奖励）
       const breakdown = formattedUsage?.usageBreakdown?.[0]
-      const used = breakdown?.currentUsage || 0
-      const limit = breakdown?.usageLimit || 0
-      const percent = limit > 0 ? Math.round((used / limit) * 100) : 0
+      const { used, limit, percent } = calculateTotalUsage(breakdown)
       const exhausted = percent >= 100
 
       if (formattedUsage) {
@@ -133,11 +129,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const rawUsage = await service.getUsageLimits()
     const formattedUsage = formatKiroUsage(rawUsage)
 
-    // 从格式化数据中提取用量
+    // 从格式化数据中提取用量（包括免费试用和奖励）
     const breakdown = formattedUsage?.usageBreakdown?.[0]
-    const used = breakdown?.currentUsage || 0
-    const limit = breakdown?.usageLimit || 0
-    const percent = limit > 0 ? Math.round((used / limit) * 100) : 0
+    const { used, limit, percent } = calculateTotalUsage(breakdown)
     const exhausted = percent >= 100
 
     if (formattedUsage) {

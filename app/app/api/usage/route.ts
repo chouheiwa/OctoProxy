@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateAdmin } from '@/lib/middleware/auth'
 import { getAllProviders } from '@/lib/db/providers'
+import { calculateTotalUsage } from '@/lib/kiro/usage-formatter'
 
 /**
  * GET /api/usage - 获取所有提供商的用量信息
@@ -21,9 +22,7 @@ export async function GET(request: NextRequest) {
         try {
           const cachedUsage = JSON.parse(provider.cached_usage_data)
           const breakdown = cachedUsage?.usageBreakdown?.[0]
-          const used = breakdown?.currentUsage || 0
-          const limit = breakdown?.usageLimit || 0
-          const percent = limit > 0 ? Math.round((used / limit) * 100) : 0
+          const { used, limit, percent } = calculateTotalUsage(breakdown)
           const exhausted = percent >= 100
 
           usageList.push({

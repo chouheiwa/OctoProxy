@@ -20,7 +20,7 @@ import {
 import { KiroService, KiroCredentials } from "@/lib/kiro/service";
 import { DEFAULT_HEALTH_CHECK_MODEL } from "@/lib/kiro/constants";
 import { getConfig, Config } from "@/lib/config";
-import { formatKiroUsage } from "@/lib/kiro/usage-formatter";
+import { formatKiroUsage, calculateTotalUsage } from "@/lib/kiro/usage-formatter";
 import { getDatabase } from "@/lib/db";
 
 /**
@@ -385,7 +385,9 @@ export function getPoolStats(): PoolStats {
       if (!p.cached_usage_data) return false;
       try {
         const cached = JSON.parse(p.cached_usage_data);
-        return cached.exhausted || false;
+        const breakdown = cached?.usageBreakdown?.[0];
+        const { percent } = calculateTotalUsage(breakdown);
+        return percent >= 100;
       } catch {
         return false;
       }
@@ -533,37 +535,16 @@ export async function syncProvidersUsage(): Promise<UsageSyncResult> {
         updateProviderAccountEmail(provider.id, usage.user.email);
       }
 
-      // 计算总用量
-      let totalUsed = 0;
-      let totalLimit = 0;
-
-      if (usage?.usageBreakdown) {
-        for (const item of usage.usageBreakdown) {
-          totalUsed += item.currentUsage || 0;
-          totalLimit += item.usageLimit || 0;
-
-          if (item.freeTrial) {
-            totalUsed += item.freeTrial.currentUsage || 0;
-            totalLimit += item.freeTrial.usageLimit || 0;
-          }
-
-          if (item.bonuses) {
-            for (const bonus of item.bonuses) {
-              totalUsed += bonus.currentUsage || 0;
-              totalLimit += bonus.usageLimit || 0;
-            }
-          }
-        }
-      }
-
-      const percent = totalLimit > 0 ? (totalUsed / totalLimit) * 100 : 0;
-      const isExhausted = totalLimit > 0 && totalUsed >= totalLimit;
+      // 计算总用量（包括免费试用和奖励）
+      const breakdown = usage?.usageBreakdown?.[0];
+      const { used, limit, percent } = calculateTotalUsage(breakdown);
+      const isExhausted = percent >= 100;
 
       // 更新用量缓存
       updateProviderUsageCache(provider.id, {
-        used: totalUsed,
-        limit: totalLimit,
-        percent: percent,
+        used,
+        limit,
+        percent,
         exhausted: isExhausted,
       });
 
@@ -571,7 +552,7 @@ export async function syncProvidersUsage(): Promise<UsageSyncResult> {
       if (isExhausted) {
         exhausted++;
         console.log(
-          `[UsageSync] Provider ${provider.id} is exhausted (${totalUsed}/${totalLimit})`
+          `[UsageSync] Provider ${provider.id} is exhausted (${used}/${limit})`
         );
       }
     } catch (error: any) {

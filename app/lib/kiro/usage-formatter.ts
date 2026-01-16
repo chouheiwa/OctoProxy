@@ -165,4 +165,44 @@ export function formatKiroUsage(usageData: any): FormattedUsage | null {
   return result;
 }
 
-export default { formatKiroUsage };
+/**
+ * 计算总用量（包括基础额度、免费试用和奖励）
+ * @param breakdown - 用量明细项
+ * @returns 总用量信息 { used, limit, percent }
+ */
+export function calculateTotalUsage(breakdown: UsageBreakdownItem | undefined): {
+  used: number;
+  limit: number;
+  percent: number;
+} {
+  if (!breakdown) {
+    return { used: 0, limit: 0, percent: 0 };
+  }
+
+  // 基础额度
+  let totalUsed = breakdown.currentUsage || 0;
+  let totalLimit = breakdown.usageLimit || 0;
+
+  // 免费试用额度
+  if (breakdown.freeTrial) {
+    totalUsed += breakdown.freeTrial.currentUsage || 0;
+    totalLimit += breakdown.freeTrial.usageLimit || 0;
+  }
+
+  // 奖励额度
+  if (breakdown.bonuses && Array.isArray(breakdown.bonuses)) {
+    for (const bonus of breakdown.bonuses) {
+      // 只统计活跃状态的奖励
+      if (bonus.status === 'ACTIVE' || bonus.status === 'REDEEMED') {
+        totalUsed += bonus.currentUsage || 0;
+        totalLimit += bonus.usageLimit || 0;
+      }
+    }
+  }
+
+  const percent = totalLimit > 0 ? Math.round((totalUsed / totalLimit) * 100) : 0;
+
+  return { used: totalUsed, limit: totalLimit, percent };
+}
+
+export default { formatKiroUsage, calculateTotalUsage };

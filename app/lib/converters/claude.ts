@@ -486,14 +486,10 @@ function parseSingleBracketToolCall(toolCallText: string): CollectedToolCall | n
   const jsonCandidate = toolCallText.substring(argsStart, argsEnd).trim();
   console.log(`[Claude Converter] JSON candidate for ${toolName} (first 300 chars):`, jsonCandidate.substring(0, 300));
 
+  // 先尝试直接解析 JSON
   try {
-    const repairedJson = repairJson(jsonCandidate);
-    if (repairedJson !== jsonCandidate) {
-      console.log(`[Claude Converter] JSON was repaired for ${toolName}`);
-    }
-    const argumentsObj = JSON.parse(repairedJson);
+    const argumentsObj = JSON.parse(jsonCandidate);
     if (typeof argumentsObj !== "object" || argumentsObj === null) {
-      // 解析成功但不是对象，包装为对象
       console.log(`[Claude Converter] Parsed non-object for ${toolName}, wrapping as value`);
       return {
         toolUseId,
@@ -508,18 +504,40 @@ function parseSingleBracketToolCall(toolCallText: string): CollectedToolCall | n
       name: toolName,
       input: JSON.stringify(argumentsObj),
     };
-  } catch (e: any) {
-    // JSON 解析失败，打印详细信息
-    console.error(`[Claude Converter] JSON parse FAILED for ${toolName}:`);
-    console.error(`[Claude Converter]   Error: ${e.message}`);
-    console.error(`[Claude Converter]   Original JSON (first 500 chars): ${jsonCandidate.substring(0, 500)}`);
-    console.error(`[Claude Converter]   Full tool call text length: ${toolCallText.length}`);
-    // 使用空对象（必须是有效的 JSON）
-    return {
-      toolUseId,
-      name: toolName,
-      input: '{}',
-    };
+  } catch (firstError: any) {
+    // 直接解析失败，尝试修复 JSON（仅用于处理非标准格式）
+    console.log(`[Claude Converter] Direct parse failed for ${toolName}, trying repair...`);
+
+    try {
+      const repairedJson = repairJson(jsonCandidate);
+      const argumentsObj = JSON.parse(repairedJson);
+      if (typeof argumentsObj !== "object" || argumentsObj === null) {
+        return {
+          toolUseId,
+          name: toolName,
+          input: JSON.stringify({ value: argumentsObj }),
+        };
+      }
+
+      console.log(`[Claude Converter] Successfully parsed with repair: ${toolName} (${toolUseId})`);
+      return {
+        toolUseId,
+        name: toolName,
+        input: JSON.stringify(argumentsObj),
+      };
+    } catch (e: any) {
+      // 修复后仍然失败，打印详细信息
+      console.error(`[Claude Converter] JSON parse FAILED for ${toolName}:`);
+      console.error(`[Claude Converter]   Error: ${firstError.message}`);
+      console.error(`[Claude Converter]   Original JSON: ${jsonCandidate}`);
+      console.error(`[Claude Converter]   Full tool call text length: ${toolCallText.length}`);
+      // 使用空对象（必须是有效的 JSON）
+      return {
+        toolUseId,
+        name: toolName,
+        input: '{}',
+      };
+    }
   }
 }
 
@@ -647,7 +665,9 @@ export async function* convertStreamToClaude(
   let fullTextContent = "";
 
   // 发送 message_start
-  yield createMessageStart(id, model);
+  const msgStart = createMessageStart(id, model);
+  console.log('[Claude Converter] SSE output:', msgStart.substring(0, 200));
+  yield msgStart;
 
   // 定期发送 ping 保持连接活跃
   let lastPingTime = Date.now();
@@ -744,20 +764,35 @@ export async function* convertStreamToClaude(
     cleanedText = removeToolCallsFromText(fullTextContent);
   }
 
+  console.log(`[Claude Converter] Stream finished. fullTextContent length: ${fullTextContent.length}, cleanedText length: ${cleanedText.length}, toolCalls: ${uniqueToolCalls.length}`);
+  console.log(`[Claude Converter] Full text content:`, fullTextContent.substring(0, 500));
+
   // 发送清理后的文本内容（如果有）
   let textBlockIndex = 0;
   if (cleanedText.trim()) {
-    yield createContentBlockStart(textBlockIndex);
-    yield createContentBlockDelta(textBlockIndex, cleanedText);
-    yield createContentBlockStop(textBlockIndex);
+    const blockStart = createContentBlockStart(textBlockIndex);
+    const blockDelta = createContentBlockDelta(textBlockIndex, cleanedText);
+    const blockStop = createContentBlockStop(textBlockIndex);
+
+    console.log('[Claude Converter] SSE text block start:', blockStart.substring(0, 200));
+    console.log('[Claude Converter] SSE text block delta:', blockDelta.substring(0, 300));
+    console.log('[Claude Converter] SSE text block stop:', blockStop);
+
+    yield blockStart;
+    yield blockDelta;
+    yield blockStop;
     textBlockIndex++;
   }
 
   // 发送所有工具调用事件
   if (uniqueToolCalls.length > 0) {
+    console.log(`[Claude Converter] Processing ${uniqueToolCalls.length} tool calls`);
+
     for (let i = 0; i < uniqueToolCalls.length; i++) {
       const tc = uniqueToolCalls[i];
       const blockIndex = textBlockIndex + i;
+
+      console.log(`[Claude Converter] Tool call ${i}: name=${tc.name}, id=${tc.toolUseId}, input length=${tc.input?.length || 0}`);
 
       // 解析 input 为对象（如果是字符串的话）
       // 注意：input_json_delta 必须是有效的 JSON 字符串
@@ -769,7 +804,7 @@ export async function* convertStreamToClaude(
           inputJson = JSON.stringify(parsed);
         } catch {
           // 如果解析失败，必须使用空对象（不能使用无效的 JSON 字符串）
-          console.error(`[Claude Converter] INVALID JSON for ${tc.name}, using empty object`);
+          console.error(`[Claude Converter] INVALID JSON for ${tc.name}, using empty object. Raw input:`, tc.input?.substring(0, 300));
           inputJson = '{}';
         }
       } else {
@@ -777,19 +812,33 @@ export async function* convertStreamToClaude(
       }
 
       // 发送 content_block_start
-      yield createToolUseBlockStart(blockIndex, tc.toolUseId, tc.name);
+      const toolStart = createToolUseBlockStart(blockIndex, tc.toolUseId, tc.name);
       // 发送完整的 input_json_delta
-      yield createToolUseInputDelta(blockIndex, inputJson);
+      const toolDelta = createToolUseInputDelta(blockIndex, inputJson);
       // 发送 content_block_stop
-      yield createContentBlockStop(blockIndex);
+      const toolStop = createContentBlockStop(blockIndex);
+
+      console.log('[Claude Converter] SSE tool start:', toolStart);
+      console.log('[Claude Converter] SSE tool delta:', toolDelta.substring(0, 300));
+      console.log('[Claude Converter] SSE tool stop:', toolStop);
+
+      yield toolStart;
+      yield toolDelta;
+      yield toolStop;
     }
 
     stopReason = "tool_use";
   }
 
   // 发送 message_delta 和 message_stop
-  yield createMessageDelta(stopReason, usage);
-  yield createMessageStop();
+  const msgDelta = createMessageDelta(stopReason, usage);
+  const msgStop = createMessageStop();
+
+  console.log('[Claude Converter] SSE message_delta:', msgDelta);
+  console.log('[Claude Converter] SSE message_stop:', msgStop);
+
+  yield msgDelta;
+  yield msgStop;
 }
 
 /**

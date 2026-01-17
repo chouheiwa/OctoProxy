@@ -1027,6 +1027,7 @@ export class KiroService {
           }
         }
       }
+
     } catch (error: any) {
       if (stream && typeof stream.destroy === "function") stream.destroy();
 

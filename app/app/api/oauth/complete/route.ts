@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { sessionId, name, checkHealth = true } = body
+    const { sessionId, name, checkHealth = true, providerType = 'kiro' } = body
 
     if (!sessionId) {
       return NextResponse.json(
@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
       region: session.credentials.region || 'us-east-1',
       credentials: session.credentials,
       checkHealth,
+      providerType,
     })
 
     if (!provider) {

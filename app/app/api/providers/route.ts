@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, region, credentials, checkHealth, checkModelName } = body
+    const { name, region, credentials, checkHealth, checkModelName, providerType } = body
 
     // 验证必需字段
     if (!credentials) {
@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
           : JSON.stringify(credentials),
       checkHealth,
       checkModelName,
+      providerType: providerType || 'kiro',
     })
 
     if (!provider) {

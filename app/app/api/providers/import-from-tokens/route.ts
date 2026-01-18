@@ -116,11 +116,12 @@ export async function POST(request: NextRequest) {
         // 生成名称
         const name = generateProviderName(tokenData, i)
 
-        // 创建 provider
+        // 创建 provider (自动检测的 token 都是 kiro 类型)
         const provider = createProvider({
           name,
           region: data.region || 'us-east-1',
           credentials: JSON.stringify(credentials),
+          providerType: 'kiro',
         })
 
         if (!provider) {

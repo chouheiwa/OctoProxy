@@ -94,6 +94,7 @@ interface Provider {
   is_healthy: boolean;
   is_disabled: boolean;
   error_count: number;
+  last_error_message?: string | null;
   usage_count: number;
   last_used?: string;
   check_health: boolean;

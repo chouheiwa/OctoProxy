@@ -56,7 +56,7 @@ mac:
   gatekeeperAssess: false
   entitlements: assets/entitlements.mac.plist
   entitlementsInherit: assets/entitlements.mac.plist
-  # 公证配置
+  # 公证配置（使用 App Store Connect API Key）
   notarize:
     teamId: ${APPLE_TEAM_ID}
 

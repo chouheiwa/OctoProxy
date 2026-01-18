@@ -339,12 +339,14 @@ export async function checkProviderHealth(providerId: number): Promise<boolean> 
       console.log(`[Pool] Provider ${providerId} is healthy`);
       return true;
     } else {
-      markProviderUnhealthy(providerId, "Empty response from health check");
+      // 健康检查失败时立即标记为不健康（maxErrorCount = 1）
+      markProviderUnhealthy(providerId, "Empty response from health check", 1);
       return false;
     }
   } catch (error: any) {
     const errorMsg = error.message || "Unknown error";
-    markProviderUnhealthy(providerId, errorMsg);
+    // 健康检查失败时立即标记为不健康（maxErrorCount = 1）
+    markProviderUnhealthy(providerId, errorMsg, 1);
     console.log(`[Pool] Provider ${providerId} health check failed: ${errorMsg}`);
     return false;
   }

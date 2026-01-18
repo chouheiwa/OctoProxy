@@ -498,12 +498,13 @@ export default function ProvidersPage() {
         throw new Error(response.error || 'Health check failed');
       }
       if (response.success) {
+        // 先刷新列表，确保状态同步更新
+        await loadProviders();
         message.info(
           response.healthy
             ? t("providers.healthCheckSuccess")
             : t("providers.healthCheckFailed"),
         );
-        loadProviders();
       }
     } catch (err: any) {
       message.error(err.message || t("errors.loadFailed"));
@@ -978,14 +979,6 @@ export default function ProvidersPage() {
       render: (text: string, record: Provider) => text || `Provider #${record.id}`,
     },
     {
-      title: t("providers.providerType"),
-      dataIndex: "provider_type",
-      key: "provider_type",
-      render: (type: string) => (
-        <Tag color="blue">{type || 'kiro'}</Tag>
-      ),
-    },
-    {
       title: t("providers.accountEmail"),
       dataIndex: "account_email",
       key: "account_email",
@@ -1012,7 +1005,11 @@ export default function ProvidersPage() {
       render: (_: any, record: Provider) => {
         const allowedModels = parseAllowedModels(record.allowed_models);
         if (allowedModels === null) {
-          return <Tag color="blue">{t("providers.allModels")}</Tag>;
+          return (
+            <Tooltip title={ALL_MODELS.join(', ')}>
+              <Tag color="blue">{t("providers.allModels")}</Tag>
+            </Tooltip>
+          );
         }
         return (
           <Tooltip title={allowedModels.join(', ')}>
@@ -1121,7 +1118,7 @@ export default function ProvidersPage() {
       )}
 
       <Collapse
-        defaultActiveKey={Object.keys(groupedProviders).filter(type => groupedProviders[type].length > 0)}
+        defaultActiveKey={Object.keys(groupedProviders)}
         items={Object.entries(groupedProviders).map(([type, typeProviders]) => ({
           key: type,
           label: (

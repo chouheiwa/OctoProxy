@@ -1,5 +1,5 @@
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js'
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
+import { readFileSync, existsSync, mkdirSync, writeFileSync, statSync } from 'fs'
 import { dirname, join } from 'path'
 import crypto from 'crypto'
 
@@ -14,6 +14,9 @@ let SQL: initSqlJs.SqlJsStatic | null = null
 
 // 初始化 Promise（用于确保只初始化一次）
 let initPromise: Promise<void> | null = null
+
+// 文件同步相关：记录上次加载时的文件修改时间
+let lastFileMtime: number = 0
 
 /**
  * Statement 包装器，模拟 better-sqlite3 的 API
@@ -187,7 +190,7 @@ function scheduleSave(): void {
   saveTimeout = setTimeout(() => {
     saveDatabase()
     saveTimeout = null
-  }, 1000) // 1秒后保存
+  }, 100) // 100ms 后保存（减少延迟）
 }
 
 /**
@@ -200,8 +203,49 @@ function saveDatabase(): void {
     const data = sqliteDb.export()
     const buffer = Buffer.from(data)
     writeFileSync(dbPath, buffer)
+    // 更新文件修改时间记录
+    lastFileMtime = statSync(dbPath).mtimeMs
   } catch (error) {
     console.error('[Database] Failed to save database:', error)
+  }
+}
+
+/**
+ * 立即保存数据库（用于关键操作后）
+ */
+export function saveImmediately(): void {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout)
+    saveTimeout = null
+  }
+  saveDatabase()
+}
+
+/**
+ * 从文件重新加载数据库（内部使用）
+ * 注意：这会丢弃内存中未保存的更改
+ * @deprecated 不再需要手动调用，getDatabase() 会自动检测文件变化
+ */
+function reloadFromFile(): void {
+  if (!SQL || !dbPath) {
+    console.warn('[Database] Cannot reload: SQL or dbPath not initialized')
+    return
+  }
+
+  try {
+    if (existsSync(dbPath)) {
+      const data = readFileSync(dbPath)
+      // 关闭旧的数据库实例
+      if (sqliteDb) {
+        sqliteDb.close()
+      }
+      // 创建新的数据库实例
+      sqliteDb = new SQL.Database(data)
+      db = new DatabaseWrapper(sqliteDb)
+      console.log('[Database] Reloaded from file')
+    }
+  } catch (error) {
+    console.error('[Database] Failed to reload from file:', error)
   }
 }
 
@@ -321,6 +365,8 @@ export function initDatabase(customDbPath?: string): DatabaseWrapper {
   let data: Buffer | null = null
   if (existsSync(finalDbPath)) {
     data = readFileSync(finalDbPath)
+    // 记录文件修改时间
+    lastFileMtime = statSync(finalDbPath).mtimeMs
     console.log(`[Database] Loading existing database from ${finalDbPath}`)
   } else {
     console.log(`[Database] Creating new database at ${finalDbPath}`)
@@ -380,7 +426,36 @@ async function ensureSqlJsInitialized(): Promise<void> {
 }
 
 /**
+ * 检查文件是否被其他进程修改，如果是则重新加载
+ */
+function checkAndReloadIfNeeded(): void {
+  if (!SQL || !dbPath || !db) return
+
+  try {
+    if (existsSync(dbPath)) {
+      const currentMtime = statSync(dbPath).mtimeMs
+      // 如果文件被其他进程修改（mtime 变化），重新加载
+      if (currentMtime > lastFileMtime) {
+        const data = readFileSync(dbPath)
+        // 关闭旧的数据库实例
+        if (sqliteDb) {
+          sqliteDb.close()
+        }
+        // 创建新的数据库实例
+        sqliteDb = new SQL.Database(data)
+        db = new DatabaseWrapper(sqliteDb)
+        lastFileMtime = currentMtime
+        console.log('[Database] Auto-reloaded due to file change')
+      }
+    }
+  } catch (error) {
+    console.error('[Database] Failed to check/reload database:', error)
+  }
+}
+
+/**
  * 获取数据库实例（同步版本，需要先调用 ensureDatabase）
+ * 自动检测文件变化并重新加载，解决多 worker 环境下的数据同步问题
  */
 export function getDatabase(): DatabaseWrapper {
   if (!db) {
@@ -389,6 +464,10 @@ export function getDatabase(): DatabaseWrapper {
     }
     return initDatabase()
   }
+
+  // 检查文件是否被其他进程修改，如果是则重新加载
+  checkAndReloadIfNeeded()
+
   return db
 }
 
@@ -439,6 +518,8 @@ function runMigrations(): void {
     '002_add_account_email.sql',
     '003_add_usage_cache.sql',
     '004_add_usage_data_cache.sql',
+    '005_add_model_access.sql',
+    '006_add_oauth_sessions.sql',
   ]
 
   for (const migrationFile of migrationFiles) {

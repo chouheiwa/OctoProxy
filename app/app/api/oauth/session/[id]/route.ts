@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticateAdmin } from '@/lib/middleware/auth'
 import { getSessionStatus, cancelSession } from '@/lib/kiro/oauth'
 
+// 禁用 Next.js 路由缓存
+export const dynamic = 'force-dynamic'
+
 interface RouteParams {
   params: Promise<{ id: string }>
 }

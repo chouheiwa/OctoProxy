@@ -19,6 +19,8 @@ import {
   message,
   Popconfirm,
   Checkbox,
+  Tooltip,
+  Progress,
 } from "antd";
 import {
   PlusOutlined,
@@ -33,16 +35,59 @@ import {
   SearchOutlined,
   ReloadOutlined,
   BankOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+// 所有支持的模型列表
+const ALL_MODELS = [
+  'claude-opus-4-5',
+  'claude-opus-4-5-20251101',
+  'claude-haiku-4-5',
+  'claude-sonnet-4-5',
+  'claude-sonnet-4-5-20250929',
+  'claude-sonnet-4-20250514',
+  'claude-3-7-sonnet-20250219'
+];
+
+// FREE 账户默认允许的模型
+const DEFAULT_FREE_ALLOWED_MODELS = ALL_MODELS.filter(
+  (model) => !model.includes('opus')
+);
+
+// 解析 allowed_models 字段
+function parseAllowedModels(allowedModels: string | null | undefined): string[] | null {
+  if (allowedModels === null || allowedModels === undefined) {
+    return null; // null 表示允许所有模型
+  }
+  try {
+    return JSON.parse(allowedModels) as string[];
+  } catch {
+    return null;
+  }
+}
+
+// 获取账户类型的颜色
+function getAccountTypeColor(accountType: string | undefined): string {
+  switch (accountType) {
+    case 'FREE':
+      return 'warning';
+    case 'PRO':
+      return 'success';
+    default:
+      return 'default';
+  }
+}
 
 interface Provider {
   id: number;
   uuid?: string;
   name: string;
   account_email?: string;
+  account_type?: 'FREE' | 'PRO' | 'UNKNOWN';
+  allowed_models?: string | null;
   region: string;
   is_healthy: boolean;
   is_disabled: boolean;
@@ -50,7 +95,12 @@ interface Provider {
   usage_count: number;
   last_used?: string;
   check_health: boolean;
+  cached_usage_data?: string | null;
+  cached_usage_used?: number;
+  cached_usage_limit?: number;
   cached_usage_percent?: number;
+  usage_exhausted?: boolean;
+  last_usage_sync?: string | null;
   credentials?: any;
 }
 
@@ -93,6 +143,10 @@ export default function ProvidersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const { t } = useTranslation();
+
+  // 用量刷新状态
+  const [refreshingAll, setRefreshingAll] = useState(false);
+  const [refreshingProviders, setRefreshingProviders] = useState<Record<number, boolean>>({});
 
   // 检测是否在 Electron 环境
   const isElectron = typeof window !== "undefined" && window.electronAPI;
@@ -338,7 +392,12 @@ export default function ProvidersPage() {
         setOauthSessionId(null);
         completeForm.resetFields();
         message.success(t("common.save"));
-        loadProviders();
+        await loadProviders();
+
+        // 自动刷新新提供商的用量
+        if (response.provider?.id) {
+          refreshProviderUsage(response.provider.id);
+        }
       } else {
         message.error(response.error || t("errors.saveFailed"));
       }
@@ -359,11 +418,19 @@ export default function ProvidersPage() {
         }
       }
 
+      // 处理模型访问权限
+      let allowedModels: string[] | null = null;
+      if (!values.allowAllModels) {
+        allowedModels = values.allowedModels || [];
+      }
+
       const data: any = {
         name: values.name,
         region: values.region,
         checkHealth: values.checkHealth,
         ...(credentials && { credentials }),
+        // 只有在编辑时才更新 allowedModels
+        ...(editingProvider && { allowedModels }),
       };
 
       const url = editingProvider
@@ -371,6 +438,7 @@ export default function ProvidersPage() {
         : '/api/providers';
       const method = editingProvider ? 'PUT' : 'POST';
 
+      const isCreating = !editingProvider;
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -385,7 +453,12 @@ export default function ProvidersPage() {
       setEditingProvider(null);
       form.resetFields();
       message.success(t("common.save"));
-      loadProviders();
+      await loadProviders();
+
+      // 新创建的提供商自动刷新用量
+      if (isCreating && response.provider?.id) {
+        refreshProviderUsage(response.provider.id);
+      }
     } catch (err: any) {
       message.error(err.message || t("errors.saveFailed"));
     }
@@ -401,7 +474,8 @@ export default function ProvidersPage() {
         throw new Error(response.error || 'Failed to delete provider');
       }
       message.success(t("common.delete") + " " + t("common.success"));
-      loadProviders();
+      // 立即从本地状态移除，避免等待 API 响应
+      setProviders((prev) => prev.filter((p) => p.id !== id));
     } catch (err: any) {
       message.error(err.message || t("errors.deleteFailed"));
     }
@@ -429,24 +503,6 @@ export default function ProvidersPage() {
     }
   };
 
-  const handleRefreshToken = async (id: number) => {
-    try {
-      const res = await fetch(`/api/providers/${id}/refresh-token`, {
-        method: 'POST',
-      });
-      const response = await res.json();
-      if (!res.ok) {
-        throw new Error(response.error || 'Refresh token failed');
-      }
-      if (response.success) {
-        message.success(t("providers.refreshTokenSuccess"));
-        loadProviders();
-      }
-    } catch (err: any) {
-      message.error(err.message || t("providers.refreshTokenFailed"));
-    }
-  };
-
   const handleToggleProvider = async (provider: Provider) => {
     try {
       const res = await fetch(`/api/providers/${provider.id}`, {
@@ -463,6 +519,96 @@ export default function ProvidersPage() {
       loadProviders();
     } catch (err: any) {
       message.error(err.message || t("errors.saveFailed"));
+    }
+  };
+
+  // 刷新单个提供商用量
+  const refreshProviderUsage = async (providerId: number) => {
+    setRefreshingProviders((prev) => ({ ...prev, [providerId]: true }));
+
+    try {
+      const res = await fetch(`/api/usage/${providerId}`, {
+        method: 'POST',
+      });
+      const response = await res.json();
+      if (!res.ok) {
+        throw new Error(response.error || 'Refresh failed');
+      }
+      if (response.success) {
+        // 更新本地 provider 数据
+        setProviders((prev) =>
+          prev.map((p) =>
+            p.id === providerId
+              ? {
+                  ...p,
+                  account_email: response.account_email || p.account_email,
+                  account_type: response.account_type || p.account_type,
+                  cached_usage_used: response.usage?.used,
+                  cached_usage_limit: response.usage?.limit,
+                  cached_usage_percent: response.usage?.percent,
+                  usage_exhausted: response.exhausted || false,
+                  last_usage_sync: response.lastSync,
+                }
+              : p,
+          ),
+        );
+        message.success(t("usage.providerRefreshSuccess"));
+      }
+    } catch (err: any) {
+      message.error(err.message || t("errors.loadFailed"));
+    } finally {
+      setRefreshingProviders((prev) => ({ ...prev, [providerId]: false }));
+    }
+  };
+
+  // 刷新所有提供商用量
+  const refreshAllUsage = async () => {
+    setRefreshingAll(true);
+    setError("");
+
+    try {
+      for (const provider of providers) {
+        try {
+          setRefreshingProviders((prev) => ({
+            ...prev,
+            [provider.id]: true,
+          }));
+          const res = await fetch(`/api/usage/${provider.id}`, {
+            method: 'POST',
+          });
+          const response = await res.json();
+          if (response.success) {
+            setProviders((prev) =>
+              prev.map((p) =>
+                p.id === provider.id
+                  ? {
+                      ...p,
+                      account_email: response.account_email || p.account_email,
+                      account_type: response.account_type || p.account_type,
+                      cached_usage_used: response.usage?.used,
+                      cached_usage_limit: response.usage?.limit,
+                      cached_usage_percent: response.usage?.percent,
+                      usage_exhausted: response.exhausted || false,
+                      last_usage_sync: response.lastSync,
+                    }
+                  : p,
+              ),
+            );
+          }
+        } catch (err: any) {
+          console.error(`Failed to refresh usage for provider ${provider.id}:`, err);
+        } finally {
+          setRefreshingProviders((prev) => ({
+            ...prev,
+            [provider.id]: false,
+          }));
+        }
+      }
+      message.success(t("usage.refreshSuccess"));
+    } catch (err: any) {
+      setError(err.message || t("errors.loadFailed"));
+    } finally {
+      setRefreshingAll(false);
     }
   };
 
@@ -654,7 +800,12 @@ export default function ProvidersPage() {
           }),
         );
         setTokenPreviewModalOpen(false);
-        loadProviders();
+        await loadProviders();
+
+        // 导入后刷新所有用量
+        if (response.imported > 0) {
+          refreshAllUsage();
+        }
       } else {
         message.error(response.error || t("providers.importError"));
       }
@@ -665,11 +816,14 @@ export default function ProvidersPage() {
 
   const openEditModal = (provider: Provider) => {
     setEditingProvider(provider);
+    const allowedModels = parseAllowedModels(provider.allowed_models);
     form.setFieldsValue({
       name: provider.name || "",
       region: provider.region || "us-east-1",
       credentials: "",
       checkHealth: provider.check_health,
+      allowedModels: allowedModels === null ? ALL_MODELS : allowedModels,
+      allowAllModels: allowedModels === null,
     });
     setManualModalOpen(true);
   };
@@ -680,6 +834,8 @@ export default function ProvidersPage() {
     form.setFieldsValue({
       region: "us-east-1",
       checkHealth: true,
+      allowedModels: ALL_MODELS,
+      allowAllModels: true,
     });
     setManualModalOpen(true);
   };
@@ -703,6 +859,33 @@ export default function ProvidersPage() {
       key: "region",
     },
     {
+      title: t("providers.accountType"),
+      dataIndex: "account_type",
+      key: "account_type",
+      render: (accountType: string | undefined) => (
+        <Tag color={getAccountTypeColor(accountType)}>
+          {accountType || 'UNKNOWN'}
+        </Tag>
+      ),
+    },
+    {
+      title: t("providers.modelAccess"),
+      key: "model_access",
+      render: (_: any, record: Provider) => {
+        const allowedModels = parseAllowedModels(record.allowed_models);
+        if (allowedModels === null) {
+          return <Tag color="blue">{t("providers.allModels")}</Tag>;
+        }
+        return (
+          <Tooltip title={allowedModels.join(', ')}>
+            <Tag color="cyan">
+              {allowedModels.length} {t("providers.models")}
+            </Tag>
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: t("common.status"),
       key: "status",
       render: (_: any, record: Provider) => (
@@ -722,9 +905,54 @@ export default function ProvidersPage() {
     },
     {
       title: t("providers.usage"),
-      dataIndex: "usage_count",
-      key: "usage_count",
-      render: (text: number) => text || 0,
+      key: "usage_quota",
+      width: 180,
+      render: (_: any, record: Provider) => {
+        const used = record.cached_usage_used || 0;
+        const limit = record.cached_usage_limit || 0;
+        const percent = record.cached_usage_percent || 0;
+        const isOverLimit = record.usage_exhausted;
+        const isRefreshing = refreshingProviders[record.id];
+
+        // 如果没有用量数据
+        if (!record.cached_usage_limit) {
+          return (
+            <Tooltip title={t("usage.noData")}>
+              <Text type="secondary">-</Text>
+            </Tooltip>
+          );
+        }
+
+        return (
+          <Space direction="vertical" size={0} style={{ width: '100%' }}>
+            <Progress
+              percent={percent}
+              size="small"
+              status={isOverLimit ? "exception" : "active"}
+              showInfo={false}
+              strokeColor={isOverLimit ? "#ff4d4f" : "#1668dc"}
+            />
+            <Space size={4}>
+              <Text
+                type={isOverLimit ? "danger" : "secondary"}
+                style={{ fontSize: 12 }}
+              >
+                {used} / {limit}
+              </Text>
+              <Tooltip title={t("usage.refreshProvider")}>
+                <Button
+                  type="text"
+                  size="small"
+                  style={{ padding: 0, height: 16, width: 16, minWidth: 16 }}
+                  icon={<SyncOutlined spin={isRefreshing} style={{ fontSize: 10 }} />}
+                  onClick={() => refreshProviderUsage(record.id)}
+                  disabled={refreshingAll || isRefreshing}
+                />
+              </Tooltip>
+            </Space>
+          </Space>
+        );
+      },
     },
     {
       title: t("providers.lastUsed"),
@@ -741,12 +969,6 @@ export default function ProvidersPage() {
           <Button size="small" onClick={() => handleHealthCheck(record.id)}>
             {t("common.check")}
           </Button>
-          <Button
-            size="small"
-            icon={<ReloadOutlined />}
-            onClick={() => handleRefreshToken(record.id)}
-            title={t("providers.refreshToken")}
-          />
           <Button size="small" onClick={() => handleToggleProvider(record)}>
             {record.is_disabled ? t("common.enable") : t("common.disable")}
           </Button>
@@ -782,6 +1004,13 @@ export default function ProvidersPage() {
           {t("providers.title")}
         </Title>
         <Space>
+          <Button
+            icon={<SyncOutlined spin={refreshingAll} />}
+            onClick={refreshAllUsage}
+            loading={refreshingAll}
+          >
+            {t("usage.refreshAll")}
+          </Button>
           <Button icon={<ExportOutlined />} onClick={handleExport}>
             {t("providers.export")}
           </Button>
@@ -874,6 +1103,79 @@ export default function ProvidersPage() {
           >
             <Switch />
           </Form.Item>
+
+          {/* 模型访问配置 - 仅在编辑时显示 */}
+          {editingProvider && (
+            <>
+              <Form.Item
+                name="allowAllModels"
+                label={t("providers.allowAllModels")}
+                valuePropName="checked"
+              >
+                <Switch
+                  onChange={(checked) => {
+                    if (checked) {
+                      form.setFieldsValue({ allowedModels: ALL_MODELS });
+                    }
+                  }}
+                />
+              </Form.Item>
+
+              <Form.Item
+                noStyle
+                shouldUpdate={(prevValues, currentValues) =>
+                  prevValues.allowAllModels !== currentValues.allowAllModels
+                }
+              >
+                {({ getFieldValue }) =>
+                  !getFieldValue("allowAllModels") && (
+                    <Form.Item
+                      name="allowedModels"
+                      label={t("providers.allowedModels")}
+                    >
+                      <Checkbox.Group style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {ALL_MODELS.map((model) => (
+                          <Checkbox key={model} value={model}>
+                            {model}
+                            {model.includes('opus') && editingProvider?.account_type === 'FREE' && (
+                              <Tooltip title={t("providers.opusWarningForFree")}>
+                                <Tag color="warning" style={{ marginLeft: 8 }}>
+                                  {t("providers.mayNotWork")}
+                                </Tag>
+                              </Tooltip>
+                            )}
+                          </Checkbox>
+                        ))}
+                      </Checkbox.Group>
+                    </Form.Item>
+                  )
+                }
+              </Form.Item>
+
+              <Space style={{ marginBottom: 16 }}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const accountType = editingProvider?.account_type;
+                    if (accountType === 'FREE') {
+                      form.setFieldsValue({
+                        allowAllModels: false,
+                        allowedModels: DEFAULT_FREE_ALLOWED_MODELS,
+                      });
+                    } else {
+                      form.setFieldsValue({
+                        allowAllModels: true,
+                        allowedModels: ALL_MODELS,
+                      });
+                    }
+                  }}
+                >
+                  {t("providers.resetToDefaults")}
+                </Button>
+              </Space>
+            </>
+          )}
+
           <Form.Item style={{ marginBottom: 0, textAlign: "right" }}>
             <Space>
               <Button onClick={() => setManualModalOpen(false)}>

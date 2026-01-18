@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateAdmin } from '@/lib/middleware/auth'
-import { getProviderById, updateProviderUsageData } from '@/lib/db/providers'
+import { getProviderById, updateProviderUsageData, updateProviderUsageCache } from '@/lib/db/providers'
 import { KiroService } from '@/lib/kiro/service'
 import { formatKiroUsage, calculateTotalUsage } from '@/lib/kiro/usage-formatter'
+
+// 禁用路由缓存
+export const dynamic = 'force-dynamic'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -36,12 +39,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         const breakdown = cachedUsage?.usageBreakdown?.[0]
         const { used, limit, percent } = calculateTotalUsage(breakdown)
         const exhausted = percent >= 100
+        const accountType = cachedUsage?.subscription?.accountType || provider.account_type || 'UNKNOWN'
 
         return NextResponse.json({
           success: true,
           id: provider.id,
           name: provider.name || `Provider ${provider.id}`,
           account_email: cachedUsage?.user?.email || provider.account_email,
+          account_type: accountType,
           subscription: cachedUsage?.subscription || null,
           usage: { used, limit, percent },
           exhausted,
@@ -70,11 +75,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         updateProviderUsageData(providerId, formattedUsage)
       }
 
+      // 更新用量缓存字段（用于列表显示）
+      updateProviderUsageCache(providerId, { used, limit, percent, exhausted })
+
+      const accountType = formattedUsage?.subscription?.accountType || 'UNKNOWN'
+
       return NextResponse.json({
         success: true,
         id: provider.id,
         name: provider.name || `Provider ${provider.id}`,
         account_email: formattedUsage?.user?.email || provider.account_email,
+        account_type: accountType,
         subscription: formattedUsage?.subscription || null,
         usage: { used, limit, percent },
         exhausted,
@@ -88,6 +99,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         id: provider.id,
         name: provider.name || `Provider ${provider.id}`,
         account_email: provider.account_email,
+        account_type: provider.account_type || 'UNKNOWN',
         usage: null,
         error: err.message,
         fromCache: false,
@@ -138,11 +150,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       updateProviderUsageData(providerId, formattedUsage)
     }
 
+    // 更新用量缓存字段（用于列表显示）
+    updateProviderUsageCache(providerId, { used, limit, percent, exhausted })
+
+    // 提取账户类型
+    const accountType = formattedUsage?.subscription?.accountType || 'UNKNOWN'
+
     return NextResponse.json({
       success: true,
       id: provider.id,
       name: provider.name || `Provider ${provider.id}`,
       account_email: formattedUsage?.user?.email || provider.account_email,
+      account_type: accountType,
       subscription: formattedUsage?.subscription || null,
       usage: { used, limit, percent },
       exhausted,

@@ -6,6 +6,9 @@ import {
   SUPPORTED_IDC_REGIONS,
 } from '@/lib/kiro/oauth'
 
+// 禁用 Next.js 路由缓存
+export const dynamic = 'force-dynamic'
+
 /**
  * POST /api/oauth/identity-center - 启动 IAM Identity Center 认证流程
  */

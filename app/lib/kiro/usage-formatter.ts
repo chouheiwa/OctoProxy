@@ -2,6 +2,8 @@
  * 格式化 Kiro 用量信息为易读格式
  */
 
+import { mapSubscriptionTypeToAccountType } from './constants';
+
 export interface BonusInfo {
   code: string;
   displayName: string;
@@ -40,6 +42,7 @@ export interface UsageBreakdownItem {
 export interface SubscriptionInfo {
   title: string;
   type: string;
+  accountType: string;  // Normalized account type: FREE, PRO, UNKNOWN
   upgradeCapability: string;
   overageCapability: string;
 }
@@ -87,6 +90,7 @@ export function formatKiroUsage(usageData: any): FormattedUsage | null {
     result.subscription = {
       title: usageData.subscriptionInfo.subscriptionTitle,
       type: usageData.subscriptionInfo.type,
+      accountType: mapSubscriptionTypeToAccountType(usageData.subscriptionInfo.type),
       upgradeCapability: usageData.subscriptionInfo.upgradeCapability,
       overageCapability: usageData.subscriptionInfo.overageCapability
     };

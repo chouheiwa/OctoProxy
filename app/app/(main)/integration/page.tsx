@@ -249,7 +249,7 @@ export default function Integration() {
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "${getDisplayApiKey()}",
     "ANTHROPIC_BASE_URL": "${baseUrl}/api",
-    "ANTHROPIC_MODEL": "claude-sonnet-4-20250514"
+    "ANTHROPIC_MODEL": "claude-sonnet-4-5"
   }
 }`}
           onCopy={copyToClipboard}
@@ -268,9 +268,9 @@ export default function Integration() {
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "${getDisplayApiKey()}",
     "ANTHROPIC_BASE_URL": "${baseUrl}/api",
-    "ANTHROPIC_MODEL": "claude-opus-4-5",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-opus-4-5",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-opus-4-5",
+    "ANTHROPIC_MODEL": "claude-sonnet-4-5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-4-5",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-5",
     "ANTHROPIC_REASONING_MODEL": "claude-opus-4-5"
   }
@@ -436,7 +436,7 @@ for await (const chunk of stream) {
   -H "x-api-key: ${getDisplayApiKey()}" \\
   -H "anthropic-version: 2023-06-01" \\
   -d '{
-    "model": "claude-sonnet-4-20250514",
+    "model": "claude-sonnet-4-5",
     "max_tokens": 1024,
     "messages": [
       {"role": "user", "content": "Hello!"}
@@ -457,7 +457,7 @@ client = anthropic.Anthropic(
 )
 
 with client.messages.stream(
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-4-5",
     max_tokens=1024,
     messages=[
         {"role": "user", "content": "Hello!"}
@@ -479,7 +479,7 @@ const client = new Anthropic({
 });
 
 const stream = await client.messages.stream({
-  model: 'claude-sonnet-4-20250514',
+  model: 'claude-sonnet-4-5',
   max_tokens: 1024,
   messages: [{ role: 'user', content: 'Hello!' }],
 });

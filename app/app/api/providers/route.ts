@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticateAdmin } from '@/lib/middleware/auth'
 import { getAllProviders, createProvider } from '@/lib/db/providers'
 
+// 禁用路由缓存，确保每次请求都获取最新数据
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/providers - 获取所有提供商列表
  */

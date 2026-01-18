@@ -3,6 +3,9 @@ import { authenticateAdmin } from '@/lib/middleware/auth'
 import { getAllProviders } from '@/lib/db/providers'
 import { calculateTotalUsage } from '@/lib/kiro/usage-formatter'
 
+// 禁用路由缓存
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/usage - 获取所有提供商的用量信息
  */

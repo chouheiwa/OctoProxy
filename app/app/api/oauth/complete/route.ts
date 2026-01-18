@@ -3,6 +3,9 @@ import { authenticateAdmin } from '@/lib/middleware/auth'
 import { getSessionStatus } from '@/lib/kiro/oauth'
 import { createProvider } from '@/lib/db/providers'
 
+// 禁用 Next.js 路由缓存
+export const dynamic = 'force-dynamic'
+
 /**
  * POST /api/oauth/complete - 完成 OAuth 认证流程
  */

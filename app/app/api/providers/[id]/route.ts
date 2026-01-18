@@ -6,6 +6,9 @@ import {
   deleteProvider,
 } from '@/lib/db/providers'
 
+// 禁用路由缓存
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/providers/:id - 获取单个提供商
  */

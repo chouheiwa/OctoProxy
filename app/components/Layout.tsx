@@ -18,7 +18,6 @@ import {
   CloudServerOutlined,
   KeyOutlined,
   UserOutlined,
-  BarChartOutlined,
   LogoutOutlined,
   GlobalOutlined,
   MenuFoldOutlined,
@@ -105,12 +104,6 @@ export default function Layout({ children }: LayoutProps) {
       key: '/users',
       icon: <UserOutlined />,
       label: t('nav.users'),
-      visible: user?.role === 'admin',
-    },
-    {
-      key: '/usage',
-      icon: <BarChartOutlined />,
-      label: t('nav.usage'),
       visible: user?.role === 'admin',
     },
     {

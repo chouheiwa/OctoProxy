@@ -12,6 +12,15 @@ import {
   StartDeviceAuthorizationCommand,
   CreateTokenCommand,
 } from "@aws-sdk/client-sso-oidc";
+import {
+  createOAuthSession,
+  getOAuthSessionBySessionId,
+  getOAuthSessionByState,
+  updateOAuthSessionStatus,
+  updateOAuthSessionInterval,
+  deleteOAuthSession,
+  cleanupExpiredOAuthSessions,
+} from "../db/oauth-sessions";
 
 /**
  * OAuth 配置接口
@@ -25,34 +34,6 @@ export interface OAuthConfig {
   scopes: string[];
   pollInterval: number;
   pollTimeout: number;
-}
-
-/**
- * OAuth 会话接口
- */
-interface OAuthSession {
-  sessionId: string;
-  type: "social" | "builder-id" | "identity-center";
-  provider?: string;
-  region: string;
-  codeVerifier?: string;
-  redirectUri?: string;
-  state?: string;
-  clientId?: string;
-  clientSecret?: string;
-  clientSecretExpiresAt?: number; // AWS OIDC 客户端凭证过期时间戳（秒）
-  deviceCode?: string;
-  userCode?: string;
-  interval?: number;
-  expiresAt?: number;
-  createdAt: number;
-  status: "pending" | "completed" | "error" | "expired" | "timeout" | "cancelled";
-  error?: string;
-  credentials?: any;
-  resolve?: (value: any) => void;
-  reject?: (reason: any) => void;
-  // IAM Identity Center 特定字段
-  startUrl?: string;
 }
 
 /**
@@ -112,9 +93,6 @@ export const KIRO_OAUTH_CONFIG: OAuthConfig = {
   // 轮询超时 (毫秒)
   pollTimeout: 300000, // 5 分钟
 };
-
-// 活跃的 OAuth 会话
-const activeSessions = new Map<string, OAuthSession>();
 
 // 活跃的回调服务器
 let callbackServer: http.Server | null = null;
@@ -272,18 +250,27 @@ export async function startSocialAuth(
 
   const redirectUri = `http://127.0.0.1:${port}/oauth/callback`;
 
+  // 将 provider 转换为 API 要求的格式（首字母大写）
+  // API 支持: Google, Github, Cognito
+  const idpMap: Record<string, string> = {
+    google: "Google",
+    github: "Github",
+    cognito: "Cognito",
+  };
+  const idp = idpMap[provider.toLowerCase()] || provider;
+
   // 构建授权 URL
   const authUrl =
     `${KIRO_OAUTH_CONFIG.authServiceEndpoint}/login?` +
-    `idp=${provider}&` +
+    `idp=${idp}&` +
     `redirect_uri=${encodeURIComponent(redirectUri)}&` +
     `code_challenge=${codeChallenge}&` +
     `code_challenge_method=S256&` +
     `state=${state}&` +
     `prompt=select_account`;
 
-  // 保存会话信息
-  activeSessions.set(state, {
+  // 保存会话信息到数据库
+  createOAuthSession({
     sessionId,
     type: "social",
     provider,
@@ -291,10 +278,6 @@ export async function startSocialAuth(
     codeVerifier,
     redirectUri,
     state,
-    createdAt: Date.now(),
-    status: "pending",
-    resolve: undefined,
-    reject: undefined,
   });
 
   console.log(`[OAuth] Started Social Auth session: ${sessionId}`);
@@ -406,8 +389,8 @@ export async function startIdCAuth(
     const expiresIn = authData.expiresIn || 600;
     const interval = authData.interval || 5;
 
-    // 3. 保存会话信息
-    activeSessions.set(sessionId, {
+    // 3. 保存会话信息到数据库
+    createOAuthSession({
       sessionId,
       type: "identity-center",
       region,
@@ -418,11 +401,7 @@ export async function startIdCAuth(
       userCode,
       interval,
       expiresAt: Date.now() + expiresIn * 1000,
-      createdAt: Date.now(),
-      status: "pending",
       startUrl, // 保存用户提供的 Start URL
-      resolve: undefined,
-      reject: undefined,
     });
 
     console.log(`[OAuth] Started IAM Identity Center session: ${sessionId}, clientId: ${clientId}, clientSecret length: ${clientSecret?.length}`);
@@ -494,8 +473,8 @@ export async function startBuilderIDAuth(
     const expiresIn = authData.expiresIn || 600;
     const interval = authData.interval || 5;
 
-    // 保存会话信息
-    activeSessions.set(sessionId, {
+    // 保存会话信息到数据库
+    createOAuthSession({
       sessionId,
       type: "builder-id",
       region,
@@ -506,10 +485,6 @@ export async function startBuilderIDAuth(
       userCode,
       interval,
       expiresAt: Date.now() + expiresIn * 1000,
-      createdAt: Date.now(),
-      status: "pending",
-      resolve: undefined,
-      reject: undefined,
     });
 
     console.log(`[OAuth] Started Builder ID session: ${sessionId}, clientId: ${clientId}, clientSecret length: ${clientSecret?.length}`);
@@ -538,18 +513,14 @@ async function handleOAuthCallback(result: OAuthCallbackResult): Promise<void> {
 
   if (!state) return;
 
-  const session = activeSessions.get(state);
+  const session = getOAuthSessionByState(state);
   if (!session) {
     console.error("[OAuth] Unknown state:", state);
     return;
   }
 
   if (error) {
-    session.status = "error";
-    session.error = error;
-    if (session.reject) {
-      session.reject(new Error(error));
-    }
+    updateOAuthSessionStatus(session.session_id, "error", error);
     return;
   }
 
@@ -565,8 +536,8 @@ async function handleOAuthCallback(result: OAuthCallbackResult): Promise<void> {
         },
         body: JSON.stringify({
           code,
-          code_verifier: session.codeVerifier,
-          redirect_uri: session.redirectUri,
+          code_verifier: session.code_verifier,
+          redirect_uri: session.redirect_uri,
         }),
       },
     );
@@ -580,9 +551,8 @@ async function handleOAuthCallback(result: OAuthCallbackResult): Promise<void> {
 
     const tokenData = await tokenResponse.json();
 
-    // 更新会话状态
-    session.status = "completed";
-    session.credentials = {
+    // 构建凭据
+    const credentials = {
       accessToken: tokenData.accessToken,
       refreshToken: tokenData.refreshToken,
       profileArn: tokenData.profileArn,
@@ -595,20 +565,15 @@ async function handleOAuthCallback(result: OAuthCallbackResult): Promise<void> {
       ssoRegion: session.region,
     };
 
-    console.log(
-      `[OAuth] Social Auth completed for session: ${session.sessionId}`,
-    );
+    // 更新数据库中的会话状态
+    updateOAuthSessionStatus(session.session_id, "completed", undefined, credentials);
 
-    if (session.resolve) {
-      session.resolve(session.credentials);
-    }
+    console.log(
+      `[OAuth] Social Auth completed for session: ${session.session_id}`,
+    );
   } catch (error: any) {
     console.error("[OAuth] Token exchange failed:", error);
-    session.status = "error";
-    session.error = error.message;
-    if (session.reject) {
-      session.reject(error);
-    }
+    updateOAuthSessionStatus(session.session_id, "error", error.message);
   }
 }
 
@@ -616,7 +581,7 @@ async function handleOAuthCallback(result: OAuthCallbackResult): Promise<void> {
  * 轮询设备授权 Token (支持 Builder ID 和 IAM Identity Center)
  */
 async function pollDeviceToken(sessionId: string): Promise<void> {
-  const session = activeSessions.get(sessionId);
+  const session = getOAuthSessionBySessionId(sessionId);
   if (
     !session ||
     (session.type !== "builder-id" && session.type !== "identity-center")
@@ -624,20 +589,22 @@ async function pollDeviceToken(sessionId: string): Promise<void> {
     return;
   }
 
-  const { clientId, clientSecret, deviceCode, interval, expiresAt, type } =
+  const { client_id: clientId, client_secret: clientSecret, device_code: deviceCode, poll_interval: interval, expires_at: expiresAt, type } =
     session;
 
   const poll = async (): Promise<void> => {
-    if (expiresAt && Date.now() > expiresAt) {
-      session.status = "expired";
-      session.error = "Device authorization expired";
-      if (session.reject) {
-        session.reject(new Error("Device authorization expired"));
-      }
+    // 重新从数据库获取最新状态
+    const currentSession = getOAuthSessionBySessionId(sessionId);
+    if (!currentSession) {
       return;
     }
 
-    if (session.status !== "pending") {
+    if (expiresAt && Date.now() > expiresAt) {
+      updateOAuthSessionStatus(sessionId, "expired", "Device authorization expired");
+      return;
+    }
+
+    if (currentSession.status !== "pending") {
       return;
     }
 
@@ -645,9 +612,9 @@ async function pollDeviceToken(sessionId: string): Promise<void> {
       // 使用 AWS SDK 进行 token 交换
       const ssoClient = new SSOOIDCClient({ region: session.region });
       const tokenCommand = new CreateTokenCommand({
-        clientId,
-        clientSecret,
-        deviceCode,
+        clientId: clientId!,
+        clientSecret: clientSecret!,
+        deviceCode: deviceCode!,
         grantType: "urn:ietf:params:oauth:grant-type:device_code",
       });
 
@@ -657,11 +624,10 @@ async function pollDeviceToken(sessionId: string): Promise<void> {
       const authMethod = type === "identity-center" ? "IdC" : "builder-id";
       const startUrl =
         type === "identity-center"
-          ? session.startUrl!
+          ? session.start_url!
           : KIRO_OAUTH_CONFIG.builderIDStartURL;
 
-      session.status = "completed";
-      session.credentials = {
+      const credentials = {
         accessToken: tokenData.accessToken!,
         refreshToken: tokenData.refreshToken!,
         expiresAt: new Date(
@@ -670,19 +636,17 @@ async function pollDeviceToken(sessionId: string): Promise<void> {
         authMethod,
         clientId,
         clientSecret,
-        clientSecretExpiresAt: session.clientSecretExpiresAt, // AWS OIDC 客户端凭证过期时间
+        clientSecretExpiresAt: session.client_secret_expires_at, // AWS OIDC 客户端凭证过期时间
         region: session.region,
         startUrl,
         ssoRegion: session.region,
       };
 
+      updateOAuthSessionStatus(sessionId, "completed", undefined, credentials);
+
       const typeName =
         type === "identity-center" ? "IAM Identity Center" : "Builder ID";
       console.log(`[OAuth] ${typeName} completed for session: ${sessionId}`);
-
-      if (session.resolve) {
-        session.resolve(session.credentials);
-      }
       return;
     } catch (error: any) {
       // AWS SDK 会抛出特定的异常，需要检查错误名称
@@ -692,24 +656,17 @@ async function pollDeviceToken(sessionId: string): Promise<void> {
         return;
       } else if (error.name === "SlowDownException") {
         // 需要降低轮询频率
-        session.interval = (interval || 5) + 5;
-        setTimeout(poll, session.interval * 1000);
+        const newInterval = (interval || 5) + 5;
+        updateOAuthSessionInterval(sessionId, newInterval);
+        setTimeout(poll, newInterval * 1000);
         return;
       } else if (error.name === "ExpiredTokenException") {
-        session.status = "expired";
-        session.error = "Device authorization expired";
-        if (session.reject) {
-          session.reject(new Error("Device authorization expired"));
-        }
+        updateOAuthSessionStatus(sessionId, "expired", "Device authorization expired");
         return;
       }
       // 其他错误
       console.error("[OAuth] Polling error:", error);
-      session.status = "error";
-      session.error = error.message || "Unknown error";
-      if (session.reject) {
-        session.reject(error);
-      }
+      updateOAuthSessionStatus(sessionId, "error", error.message || "Unknown error");
     }
   };
 
@@ -718,52 +675,52 @@ async function pollDeviceToken(sessionId: string): Promise<void> {
 }
 
 /**
- * 等待 OAuth 会话完成
+ * 等待 OAuth 会话完成（使用轮询方式检查数据库）
  */
 export function waitForAuth(
   sessionId: string,
   timeout: number = 300000
 ): Promise<Credentials> {
   return new Promise((resolve, reject) => {
-    // 先检查是否是 state (Social Auth)
-    let session = activeSessions.get(sessionId);
+    const startTime = Date.now();
+    const pollInterval = 1000; // 每秒检查一次
 
-    // 如果不是，遍历查找
-    if (!session) {
-      for (const [key, value] of activeSessions) {
-        if (value.sessionId === sessionId) {
-          session = value;
-          break;
+    const checkStatus = () => {
+      const session = getOAuthSessionBySessionId(sessionId);
+
+      if (!session) {
+        reject(new Error("Session not found"));
+        return;
+      }
+
+      if (session.status === "completed" && session.credentials) {
+        try {
+          const credentials = JSON.parse(session.credentials);
+          resolve(credentials);
+        } catch {
+          reject(new Error("Invalid credentials format"));
         }
+        return;
       }
-    }
 
-    if (!session) {
-      reject(new Error("Session not found"));
-      return;
-    }
+      if (session.status === "error" || session.status === "expired" || session.status === "cancelled") {
+        reject(new Error(session.error || "Authentication failed"));
+        return;
+      }
 
-    if (session.status === "completed") {
-      resolve(session.credentials);
-      return;
-    }
-
-    if (session.status === "error" || session.status === "expired") {
-      reject(new Error(session.error || "Authentication failed"));
-      return;
-    }
-
-    // 设置回调
-    session.resolve = resolve;
-    session.reject = reject;
-
-    // 设置超时
-    setTimeout(() => {
-      if (session!.status === "pending") {
-        session!.status = "timeout";
+      // 检查超时
+      if (Date.now() - startTime > timeout) {
+        updateOAuthSessionStatus(sessionId, "timeout", "Authentication timeout");
         reject(new Error("Authentication timeout"));
+        return;
       }
-    }, timeout);
+
+      // 继续轮询
+      setTimeout(checkStatus, pollInterval);
+    };
+
+    // 开始轮询
+    checkStatus();
   });
 }
 
@@ -779,31 +736,29 @@ export function getSessionStatus(sessionId: string): {
   error?: string;
   credentials?: any;
 } | null {
-  // 先直接查找
-  let session = activeSessions.get(sessionId);
-
-  // 如果不是，遍历查找
-  if (!session) {
-    for (const [key, value] of activeSessions) {
-      if (value.sessionId === sessionId) {
-        session = value;
-        break;
-      }
-    }
-  }
+  const session = getOAuthSessionBySessionId(sessionId);
 
   if (!session) {
     return null;
   }
 
+  let credentials: any = undefined;
+  if (session.status === "completed" && session.credentials) {
+    try {
+      credentials = JSON.parse(session.credentials);
+    } catch {
+      // ignore parse error
+    }
+  }
+
   return {
-    sessionId: session.sessionId,
+    sessionId: session.session_id,
     type: session.type,
     status: session.status,
     provider: session.provider,
-    userCode: session.userCode,
+    userCode: session.user_code,
     error: session.error,
-    credentials: session.status === "completed" ? session.credentials : undefined,
+    credentials,
   };
 }
 
@@ -811,16 +766,12 @@ export function getSessionStatus(sessionId: string): {
  * 取消会话
  */
 export function cancelSession(sessionId: string): boolean {
-  for (const [key, session] of activeSessions) {
-    if (session.sessionId === sessionId || key === sessionId) {
-      session.status = "cancelled";
-      if (session.reject) {
-        session.reject(new Error("Authentication cancelled"));
-      }
-      activeSessions.delete(key);
-      console.log(`[OAuth] Session cancelled: ${sessionId}`);
-      return true;
-    }
+  const session = getOAuthSessionBySessionId(sessionId);
+  if (session) {
+    updateOAuthSessionStatus(sessionId, "cancelled", "Authentication cancelled");
+    deleteOAuthSession(sessionId);
+    console.log(`[OAuth] Session cancelled: ${sessionId}`);
+    return true;
   }
   return false;
 }
@@ -829,14 +780,7 @@ export function cancelSession(sessionId: string): boolean {
  * 清理过期会话
  */
 export function cleanupSessions(): void {
-  const now = Date.now();
-  const maxAge = 10 * 60 * 1000; // 10 分钟
-
-  for (const [key, session] of activeSessions) {
-    if (now - session.createdAt > maxAge) {
-      activeSessions.delete(key);
-    }
-  }
+  cleanupExpiredOAuthSessions();
 }
 
 /**

@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateApiKey } from '@/lib/middleware/auth'
 import { incrementApiKeyUsage } from '@/lib/db/api-keys'
-import { executeWithRetry, executeStream } from '@/lib/pool/manager'
+import { executeWithRetry, executeStream, ModelNotAvailableError } from '@/lib/pool/manager'
 import * as openaiConverter from '@/lib/converters/openai'
 import { KIRO_MODELS } from '@/lib/kiro/constants'
 import { getConfig } from '@/lib/config'
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     const streamGenerator = executeStream((service, provider) => {
       return service.streamApi(model, requestBody)
-    })
+    }, model)
 
     // 包装生成器，用于在流开始前捕获错误
     async function* wrappedGenerator() {
@@ -116,6 +116,10 @@ export async function POST(request: NextRequest) {
       }
     } catch (error: any) {
       console.error('[API] Stream initialization error:', error.message)
+      // 模型不可用错误 - 返回 HTTP 400
+      if (error instanceof ModelNotAvailableError) {
+        return NextResponse.json(error.toOpenAIErrorResponse(), { status: 400 })
+      }
       // 上下文超限错误 - 直接返回 HTTP 400
       if (error instanceof ContextLimitExceededError) {
         return NextResponse.json(error.toOpenAIErrorResponse(), { status: 400 })
@@ -141,8 +145,8 @@ export async function POST(request: NextRequest) {
           controller.close()
         } catch (error: any) {
           console.error('[API] Stream error:', error.message)
-          // 检查是否是上下文超限错误
-          if (error instanceof ContextLimitExceededError) {
+          // 检查是否是模型不可用错误或上下文超限错误
+          if (error instanceof ModelNotAvailableError || error instanceof ContextLimitExceededError) {
             controller.enqueue(
               encoder.encode(
                 openaiConverter.formatSSE(error.toOpenAIErrorResponse())
@@ -175,7 +179,7 @@ export async function POST(request: NextRequest) {
     try {
       const axiosResponse = await executeWithRetry(async (service, provider) => {
         return service.callApi(model, requestBody)
-      })
+      }, { model })
 
       // callApi 返回 AxiosResponse，需要提取 data
       const result = axiosResponse.data
@@ -183,6 +187,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response)
     } catch (error: any) {
       console.error('[API] Request error:', error.message)
+      // 检查是否是模型不可用错误
+      if (error instanceof ModelNotAvailableError) {
+        return NextResponse.json(error.toOpenAIErrorResponse(), { status: 400 })
+      }
       // 检查是否是上下文超限错误
       if (error instanceof ContextLimitExceededError) {
         return NextResponse.json(error.toOpenAIErrorResponse(), { status: 400 })

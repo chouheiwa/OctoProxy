@@ -1,4 +1,4 @@
-import { getDatabase } from "./index";
+import { getDatabase, saveImmediately } from "./index";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -9,6 +9,11 @@ type ProviderCredentials = string | Record<string, any>;
 /**
  * 提供商接口
  */
+/**
+ * 账户类型
+ */
+export type AccountType = 'FREE' | 'PRO' | 'UNKNOWN';
+
 export interface Provider {
     id: number;
     uuid: string;
@@ -16,6 +21,8 @@ export interface Provider {
     region: string;
     credentials: string;
     account_email: string | null;
+    account_type: AccountType;
+    allowed_models: string | null;  // JSON array of model names, null = all models
     is_healthy: number;
     is_disabled: number;
     error_count: number;
@@ -53,6 +60,8 @@ interface UpdateProviderData {
     isDisabled?: boolean;
     checkHealth?: boolean;
     checkModelName?: string;
+    accountType?: AccountType;
+    allowedModels?: string[] | null;
 }
 
 /**
@@ -90,8 +99,10 @@ export function getAllProviders(): Provider[] {
         .prepare(
             `
         SELECT id, uuid, name, region, credentials, account_email,
+               account_type, allowed_models,
                is_healthy, is_disabled, error_count, last_error_time, last_error_message,
                last_used, usage_count, check_health, check_model_name, last_health_check_time,
+               cached_usage_used, cached_usage_limit, cached_usage_percent, usage_exhausted,
                cached_usage_data, last_usage_sync,
                created_at, updated_at
         FROM providers
@@ -171,6 +182,9 @@ export function createProvider(data: CreateProviderData): Provider | null {
             data.checkModelName || null,
         );
 
+    // 立即保存，确保其他请求能读取到新创建的提供商
+    saveImmediately();
+
     return getProviderById(result.lastInsertRowid as number);
 }
 
@@ -210,6 +224,14 @@ export function updateProvider(id: number, data: UpdateProviderData): Provider |
         updates.push("check_model_name = ?");
         values.push(data.checkModelName);
     }
+    if (data.accountType !== undefined) {
+        updates.push("account_type = ?");
+        values.push(data.accountType);
+    }
+    if (data.allowedModels !== undefined) {
+        updates.push("allowed_models = ?");
+        values.push(data.allowedModels === null ? null : JSON.stringify(data.allowedModels));
+    }
 
     if (updates.length === 0) {
         return getProviderById(id);
@@ -221,6 +243,10 @@ export function updateProvider(id: number, data: UpdateProviderData): Provider |
     db.prepare(`UPDATE providers SET ${updates.join(", ")} WHERE id = ?`).run(
         ...values,
     );
+
+    // 立即保存确保数据持久化
+    saveImmediately();
+
     return getProviderById(id);
 }
 
@@ -229,7 +255,15 @@ export function updateProvider(id: number, data: UpdateProviderData): Provider |
  */
 export function deleteProvider(id: number): boolean {
     const db = getDatabase();
+    console.log(`[Database] Deleting provider with id: ${id}`);
     const result = db.prepare("DELETE FROM providers WHERE id = ?").run(id);
+    console.log(`[Database] Delete result - changes: ${result.changes}`);
+
+    // 立即保存，确保删除操作持久化
+    if (result.changes > 0) {
+        saveImmediately();
+    }
+
     return result.changes > 0;
 }
 
@@ -409,6 +443,9 @@ export function updateProviderUsageCache(id: number, usageInfo: UsageInfo): void
         usageInfo.exhausted ? 1 : 0,
         id,
     );
+
+    // 立即保存确保数据持久化
+    saveImmediately();
 }
 
 /**
@@ -416,28 +453,77 @@ export function updateProviderUsageCache(id: number, usageInfo: UsageInfo): void
  */
 export function updateProviderUsageData(id: number, usageData: Record<string, any> | string): void {
     const db = getDatabase();
-    const usageDataStr =
-        typeof usageData === "string" ? usageData : JSON.stringify(usageData);
-    db.prepare(
-        `
-        UPDATE providers
-        SET cached_usage_data = ?,
-            last_usage_sync = datetime('now'),
-            updated_at = datetime('now')
-        WHERE id = ?
-    `,
-    ).run(usageDataStr, id);
+    const usageDataObj = typeof usageData === "string" ? JSON.parse(usageData) : usageData;
+    const usageDataStr = typeof usageData === "string" ? usageData : JSON.stringify(usageData);
+
+    // 提取账户类型和邮箱
+    const accountType = usageDataObj?.subscription?.accountType || 'UNKNOWN';
+    const accountEmail = usageDataObj?.user?.email || null;
+
+    console.log(`[Provider] Updating provider ${id} usage data, accountType: ${accountType}, email: ${accountEmail}`);
+
+    // 如果有邮箱则一起更新，否则只更新其他字段
+    if (accountEmail) {
+        db.prepare(
+            `
+            UPDATE providers
+            SET cached_usage_data = ?,
+                account_type = ?,
+                account_email = ?,
+                last_usage_sync = datetime('now'),
+                updated_at = datetime('now')
+            WHERE id = ?
+        `,
+        ).run(usageDataStr, accountType, accountEmail, id);
+    } else {
+        db.prepare(
+            `
+            UPDATE providers
+            SET cached_usage_data = ?,
+                account_type = ?,
+                last_usage_sync = datetime('now'),
+                updated_at = datetime('now')
+            WHERE id = ?
+        `,
+        ).run(usageDataStr, accountType, id);
+    }
+
+    // 立即保存确保数据持久化
+    saveImmediately();
+}
+
+/**
+ * 检查提供商是否允许使用指定模型
+ */
+export function isModelAllowedForProvider(provider: Provider, model: string): boolean {
+    if (provider.allowed_models === null) {
+        return true; // null = all models allowed
+    }
+    try {
+        const allowedModels = JSON.parse(provider.allowed_models) as string[];
+        return allowedModels.includes(model);
+    } catch {
+        return true; // invalid JSON = allow all (fail open)
+    }
 }
 
 /**
  * 根据策略获取可用提供商
+ * @param strategy - 选择策略
+ * @param model - 可选，如果提供则只返回支持该模型的提供商
  */
-export function getProvidersByStrategy(strategy: ProviderStrategy): Provider[] {
+export function getProvidersByStrategy(strategy: ProviderStrategy, model?: string): Provider[] {
     const db = getDatabase();
 
     // 基础条件：健康、未禁用、未耗尽额度
-    const baseCondition =
+    let baseCondition =
         "is_healthy = 1 AND is_disabled = 0 AND usage_exhausted = 0";
+
+    // 如果指定了模型，添加模型过滤条件
+    // allowed_models 为 NULL 时允许所有模型，否则检查 JSON 数组中是否包含该模型
+    if (model) {
+        baseCondition += ` AND (allowed_models IS NULL OR allowed_models LIKE '%"${model}"%')`;
+    }
 
     switch (strategy) {
         case "lru":
@@ -570,4 +656,5 @@ export default {
     getProvidersByStrategy,
     getProvidersNeedingUsageSync,
     getProviderStats,
+    isModelAllowedForProvider,
 };

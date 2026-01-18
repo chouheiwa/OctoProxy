@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticateAdmin } from '@/lib/middleware/auth'
 import { startBuilderIDAuth } from '@/lib/kiro/oauth'
 
+// 禁用 Next.js 路由缓存
+export const dynamic = 'force-dynamic'
+
 /**
  * POST /api/oauth/builder-id - 启动 AWS Builder ID 认证流程
  */

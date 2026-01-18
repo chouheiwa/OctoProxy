@@ -15,10 +15,16 @@ import {
   getProvidersNeedingUsageSync,
   updateProviderUsageCache,
   updateProviderAccountEmail,
+  updateProvider,
   Provider,
+  AccountType,
 } from "@/lib/db/providers";
 import { KiroService, KiroCredentials, ContextLimitExceededError } from "@/lib/kiro/service";
-import { DEFAULT_HEALTH_CHECK_MODEL } from "@/lib/kiro/constants";
+import {
+  DEFAULT_HEALTH_CHECK_MODEL,
+  ACCOUNT_TYPES,
+  DEFAULT_FREE_ALLOWED_MODELS,
+} from "@/lib/kiro/constants";
 import { getConfig, Config } from "@/lib/config";
 import { formatKiroUsage, calculateTotalUsage } from "@/lib/kiro/usage-formatter";
 import { getDatabase } from "@/lib/db";
@@ -85,6 +91,7 @@ export interface UsageSyncResult {
 export interface ExecuteOptions {
   maxRetries?: number;
   baseDelay?: number;
+  model?: string;
 }
 
 // 内存中的服务实例缓存
@@ -160,17 +167,35 @@ function checkAndSaveRefreshedCredentials(
 
 /**
  * 使用配置的策略选择提供商
+ * @param model - 可选，如果提供则只选择支持该模型的提供商
  */
-export function selectProvider(): Provider | null {
+export function selectProvider(model?: string): Provider | null {
   const config = getConfig();
   const strategy = config.providerStrategy || "lru";
-  const providers = getProvidersByStrategy(strategy);
+  const providers = getProvidersByStrategy(strategy, model);
 
   if (providers.length === 0) {
     // 如果按策略没有可用的，尝试回退到基础可用列表（忽略 usage_exhausted）
+    // 但仍然需要考虑模型过滤
     const fallback = getAvailableProviders();
     if (fallback.length === 0) {
       return null;
+    }
+    // 如果指定了模型，过滤掉不支持该模型的提供商
+    if (model) {
+      const compatibleFallback = fallback.filter((p) => {
+        if (p.allowed_models === null) return true;
+        try {
+          const allowedModels = JSON.parse(p.allowed_models) as string[];
+          return allowedModels.includes(model);
+        } catch {
+          return true;
+        }
+      });
+      if (compatibleFallback.length === 0) {
+        return null;
+      }
+      return compatibleFallback[0];
     }
     return fallback[0];
   }
@@ -181,12 +206,13 @@ export function selectProvider(): Provider | null {
 
 /**
  * 获取提供商并创建服务实例
+ * @param model - 可选，如果提供则只选择支持该模型的提供商
  */
-export function acquireProvider(): {
+export function acquireProvider(model?: string): {
   provider: ProviderWithCredentials;
   service: KiroService;
 } | null {
-  const provider = selectProvider();
+  const provider = selectProvider(model);
 
   if (!provider) {
     return null;
@@ -202,7 +228,7 @@ export function acquireProvider(): {
       e.message
     );
     markProviderUnhealthy(provider.id, "Invalid credentials format");
-    return acquireProvider(); // 递归尝试下一个
+    return acquireProvider(model); // 递归尝试下一个
   }
 
   const service = getServiceInstance({
@@ -398,6 +424,39 @@ export function getPoolStats(): PoolStats {
 }
 
 /**
+ * 模型不可用错误
+ */
+export class ModelNotAvailableError extends Error {
+  public model: string;
+
+  constructor(model: string) {
+    super(`No providers available for model ${model}. This model may require a PRO subscription.`);
+    this.name = "ModelNotAvailableError";
+    this.model = model;
+  }
+
+  toOpenAIErrorResponse() {
+    return {
+      error: {
+        message: this.message,
+        type: "invalid_request_error",
+        code: "model_not_available",
+      },
+    };
+  }
+
+  toClaudeErrorResponse() {
+    return {
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message: this.message,
+      },
+    };
+  }
+}
+
+/**
  * 带重试的请求执行
  */
 export async function executeWithRetry<T>(
@@ -407,14 +466,18 @@ export async function executeWithRetry<T>(
   const config = getConfig();
   const maxRetries = options.maxRetries || config.requestMaxRetries || 3;
   const baseDelay = options.baseDelay || config.requestBaseDelay || 1000;
+  const model = options.model;
 
   let lastError: Error | null = null;
   let attempts = 0;
 
   while (attempts < maxRetries) {
-    const acquired = acquireProvider();
+    const acquired = acquireProvider(model);
 
     if (!acquired) {
+      if (model) {
+        throw new ModelNotAvailableError(model);
+      }
       throw new Error("No available providers");
     }
 
@@ -465,13 +528,19 @@ export async function executeWithRetry<T>(
 
 /**
  * 流式请求执行（不支持自动重试，因为流式响应无法重试）
+ * @param streamFn - 流式请求函数
+ * @param model - 可选，如果提供则只选择支持该模型的提供商
  */
 export async function* executeStream<T>(
-  streamFn: StreamFn<T>
+  streamFn: StreamFn<T>,
+  model?: string
 ): AsyncGenerator<T> {
-  const acquired = acquireProvider();
+  const acquired = acquireProvider(model);
 
   if (!acquired) {
+    if (model) {
+      throw new ModelNotAvailableError(model);
+    }
     throw new Error("No available providers");
   }
 
@@ -544,6 +613,32 @@ export async function syncProvidersUsage(): Promise<UsageSyncResult> {
         updateProviderAccountEmail(provider.id, usage.user.email);
       }
 
+      // 更新账户类型和模型访问权限
+      const detectedAccountType = usage?.subscription?.accountType as AccountType | undefined;
+      if (detectedAccountType && detectedAccountType !== provider.account_type) {
+        console.log(
+          `[UsageSync] Provider ${provider.id} account type changed: ${provider.account_type} -> ${detectedAccountType}`
+        );
+
+        // 更新账户类型
+        const updateData: { accountType: AccountType; allowedModels?: string[] } = {
+          accountType: detectedAccountType,
+        };
+
+        // 如果是 FREE 账户且之前没有配置 allowed_models，自动设置默认限制
+        if (
+          detectedAccountType === ACCOUNT_TYPES.FREE &&
+          provider.allowed_models === null
+        ) {
+          console.log(
+            `[UsageSync] Auto-setting allowed models for FREE account provider ${provider.id}`
+          );
+          updateData.allowedModels = DEFAULT_FREE_ALLOWED_MODELS;
+        }
+
+        updateProvider(provider.id, updateData);
+      }
+
       // 计算总用量（包括免费试用和奖励）
       const breakdown = usage?.usageBreakdown?.[0];
       const { used, limit, percent } = calculateTotalUsage(breakdown);
@@ -589,4 +684,5 @@ export default {
   executeStream,
   clearServiceCache,
   syncProvidersUsage,
+  ModelNotAvailableError,
 };

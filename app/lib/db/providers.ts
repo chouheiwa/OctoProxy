@@ -23,6 +23,7 @@ export interface Provider {
     account_email: string | null;
     account_type: AccountType;
     allowed_models: string | null;  // JSON array of model names, null = all models
+    provider_type: string;  // 'kiro', 'openai', 'anthropic', etc.
     is_healthy: number;
     is_disabled: number;
     error_count: number;
@@ -48,6 +49,7 @@ interface CreateProviderData {
     credentials: ProviderCredentials;
     checkHealth?: boolean;
     checkModelName?: string | null;
+    providerType?: string;
 }
 
 /**
@@ -62,6 +64,7 @@ interface UpdateProviderData {
     checkModelName?: string;
     accountType?: AccountType;
     allowedModels?: string[] | null;
+    providerType?: string;
 }
 
 /**
@@ -99,14 +102,14 @@ export function getAllProviders(): Provider[] {
         .prepare(
             `
         SELECT id, uuid, name, region, credentials, account_email,
-               account_type, allowed_models,
+               account_type, allowed_models, provider_type,
                is_healthy, is_disabled, error_count, last_error_time, last_error_message,
                last_used, usage_count, check_health, check_model_name, last_health_check_time,
                cached_usage_used, cached_usage_limit, cached_usage_percent, usage_exhausted,
                cached_usage_data, last_usage_sync,
                created_at, updated_at
         FROM providers
-        ORDER BY created_at DESC
+        ORDER BY provider_type, created_at DESC
     `,
         )
         .all() as Provider[];
@@ -169,8 +172,8 @@ export function createProvider(data: CreateProviderData): Provider | null {
     const result = db
         .prepare(
             `
-        INSERT INTO providers (uuid, name, region, credentials, check_health, check_model_name)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO providers (uuid, name, region, credentials, check_health, check_model_name, provider_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
         )
         .run(
@@ -180,6 +183,7 @@ export function createProvider(data: CreateProviderData): Provider | null {
             credentials,
             data.checkHealth ? 1 : 0,
             data.checkModelName || null,
+            data.providerType || 'kiro',
         );
 
     // 立即保存，确保其他请求能读取到新创建的提供商
@@ -231,6 +235,10 @@ export function updateProvider(id: number, data: UpdateProviderData): Provider |
     if (data.allowedModels !== undefined) {
         updates.push("allowed_models = ?");
         values.push(data.allowedModels === null ? null : JSON.stringify(data.allowedModels));
+    }
+    if (data.providerType !== undefined) {
+        updates.push("provider_type = ?");
+        values.push(data.providerType);
     }
 
     if (updates.length === 0) {

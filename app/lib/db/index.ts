@@ -520,6 +520,7 @@ function runMigrations(): void {
     '004_add_usage_data_cache.sql',
     '005_add_model_access.sql',
     '006_add_oauth_sessions.sql',
+    '007_add_provider_type.sql',
   ]
 
   for (const migrationFile of migrationFiles) {

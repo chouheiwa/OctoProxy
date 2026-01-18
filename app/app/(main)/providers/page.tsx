@@ -21,6 +21,7 @@ import {
   Checkbox,
   Tooltip,
   Progress,
+  Collapse,
 } from "antd";
 import {
   PlusOutlined,
@@ -88,6 +89,7 @@ interface Provider {
   account_email?: string;
   account_type?: 'FREE' | 'PRO' | 'UNKNOWN';
   allowed_models?: string | null;
+  provider_type?: string;
   region: string;
   is_healthy: boolean;
   is_disabled: boolean;
@@ -160,6 +162,9 @@ export default function ProvidersPage() {
   const [tokenPreviewModalOpen, setTokenPreviewModalOpen] = useState(false);
   const [detectedTokens, setDetectedTokens] = useState<DetectedToken[]>([]);
   const [selectedTokens, setSelectedTokens] = useState<number[]>([]);
+
+  // 当前操作的提供商类型
+  const [currentProviderType, setCurrentProviderType] = useState<string>('kiro');
 
   // Form
   const [form] = Form.useForm();
@@ -381,6 +386,7 @@ export default function ProvidersPage() {
           sessionId: oauthSessionId,
           name: values.name,
           checkHealth: true,
+          providerType: currentProviderType,
         }),
       });
       const response = await res.json();
@@ -426,6 +432,7 @@ export default function ProvidersPage() {
 
       const data: any = {
         name: values.name,
+        providerType: values.providerType || 'kiro',
         region: values.region,
         checkHealth: values.checkHealth,
         ...(credentials && { credentials }),
@@ -819,6 +826,7 @@ export default function ProvidersPage() {
     const allowedModels = parseAllowedModels(provider.allowed_models);
     form.setFieldsValue({
       name: provider.name || "",
+      providerType: provider.provider_type || "kiro",
       region: provider.region || "us-east-1",
       credentials: "",
       checkHealth: provider.check_health,
@@ -828,10 +836,12 @@ export default function ProvidersPage() {
     setManualModalOpen(true);
   };
 
-  const openAddModal = () => {
+  const openAddModal = (providerType: string = 'kiro') => {
     setEditingProvider(null);
+    setCurrentProviderType(providerType);
     form.resetFields();
     form.setFieldsValue({
+      providerType: providerType,
       region: "us-east-1",
       checkHealth: true,
       allowedModels: ALL_MODELS,
@@ -840,12 +850,140 @@ export default function ProvidersPage() {
     setManualModalOpen(true);
   };
 
+  const openOAuthModal = (providerType: string = 'kiro') => {
+    setCurrentProviderType(providerType);
+    setOauthModalOpen(true);
+  };
+
+  // 预定义的提供商类型（暂时只支持 Kiro）
+  const PROVIDER_TYPES = ['kiro'];
+
+  // 按提供商类型分组，确保所有类型都存在
+  const groupedProviders = PROVIDER_TYPES.reduce((groups, type) => {
+    groups[type] = [];
+    return groups;
+  }, {} as Record<string, Provider[]>);
+
+  // 将提供商分配到各个组
+  providers.forEach((provider) => {
+    const type = provider.provider_type || 'kiro';
+    if (groupedProviders[type]) {
+      groupedProviders[type].push(provider);
+    } else {
+      // 如果是未知类型，统一归类到 kiro
+      groupedProviders['kiro'].push(provider);
+    }
+  });
+
+  // 获取提供商类型的显示名称
+  const getProviderTypeLabel = (type: string): string => {
+    switch (type) {
+      case 'kiro':
+        return 'Kiro (AWS CodeWhisperer)';
+      case 'openai':
+        return 'OpenAI';
+      case 'anthropic':
+        return 'Anthropic (Claude)';
+      case 'azure':
+        return 'Azure OpenAI';
+      case 'google':
+        return 'Google AI';
+      case 'other':
+        return t("providers.otherProviders");
+      default:
+        return type.toUpperCase();
+    }
+  };
+
+  // 根据提供商类型返回可用的操作按钮
+  const getActionsForProviderType = (providerType: string) => {
+    switch (providerType) {
+      case 'kiro':
+        return (
+          <Space>
+            <Button
+              type="primary"
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                openOAuthModal('kiro');
+              }}
+            >
+              {t("providers.addViaOAuth")}
+            </Button>
+            <Button
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                openAddModal('kiro');
+              }}
+            >
+              {t("providers.addManually")}
+            </Button>
+            {isElectron && (
+              <Button
+                size="small"
+                icon={<SearchOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAutoDetect();
+                }}
+                type="dashed"
+              >
+                {t("providers.autoDetect")}
+              </Button>
+            )}
+          </Space>
+        );
+      case 'openai':
+      case 'anthropic':
+      case 'azure':
+      case 'google':
+      case 'other':
+        return (
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={(e) => {
+              e.stopPropagation();
+              openAddModal(providerType);
+            }}
+          >
+            {t("providers.addManually")}
+          </Button>
+        );
+      default:
+        return (
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={(e) => {
+              e.stopPropagation();
+              openAddModal(providerType);
+            }}
+          >
+            {t("providers.addManually")}
+          </Button>
+        );
+    }
+  };
+
   const columns = [
     {
       title: t("common.name"),
       dataIndex: "name",
       key: "name",
       render: (text: string, record: Provider) => text || `Provider #${record.id}`,
+    },
+    {
+      title: t("providers.providerType"),
+      dataIndex: "provider_type",
+      key: "provider_type",
+      render: (type: string) => (
+        <Tag color="blue">{type || 'kiro'}</Tag>
+      ),
     },
     {
       title: t("providers.accountEmail"),
@@ -904,89 +1042,42 @@ export default function ProvidersPage() {
       ),
     },
     {
-      title: t("providers.usage"),
-      key: "usage_quota",
-      width: 180,
+      title: t("common.actions"),
+      key: "actions",
       render: (_: any, record: Provider) => {
-        const used = record.cached_usage_used || 0;
-        const limit = record.cached_usage_limit || 0;
-        const percent = record.cached_usage_percent || 0;
-        const isOverLimit = record.usage_exhausted;
         const isRefreshing = refreshingProviders[record.id];
-
-        // 如果没有用量数据
-        if (!record.cached_usage_limit) {
-          return (
-            <Tooltip title={t("usage.noData")}>
-              <Text type="secondary">-</Text>
-            </Tooltip>
-          );
-        }
-
         return (
-          <Space direction="vertical" size={0} style={{ width: '100%' }}>
-            <Progress
-              percent={percent}
+          <Space size="small">
+            <Tooltip title={t("usage.refreshProvider")}>
+              <Button
+                size="small"
+                icon={<SyncOutlined spin={isRefreshing} />}
+                onClick={() => refreshProviderUsage(record.id)}
+                disabled={refreshingAll || isRefreshing}
+              />
+            </Tooltip>
+            <Button size="small" onClick={() => handleHealthCheck(record.id)}>
+              {t("common.check")}
+            </Button>
+            <Button size="small" onClick={() => handleToggleProvider(record)}>
+              {record.is_disabled ? t("common.enable") : t("common.disable")}
+            </Button>
+            <Button
               size="small"
-              status={isOverLimit ? "exception" : "active"}
-              showInfo={false}
-              strokeColor={isOverLimit ? "#ff4d4f" : "#1668dc"}
+              icon={<EditOutlined />}
+              onClick={() => openEditModal(record)}
             />
-            <Space size={4}>
-              <Text
-                type={isOverLimit ? "danger" : "secondary"}
-                style={{ fontSize: 12 }}
-              >
-                {used} / {limit}
-              </Text>
-              <Tooltip title={t("usage.refreshProvider")}>
-                <Button
-                  type="text"
-                  size="small"
-                  style={{ padding: 0, height: 16, width: 16, minWidth: 16 }}
-                  icon={<SyncOutlined spin={isRefreshing} style={{ fontSize: 10 }} />}
-                  onClick={() => refreshProviderUsage(record.id)}
-                  disabled={refreshingAll || isRefreshing}
-                />
-              </Tooltip>
-            </Space>
+            <Popconfirm
+              title={t("providers.deleteConfirm")}
+              onConfirm={() => handleDeleteProvider(record.id)}
+              okText={t("common.confirm")}
+              cancelText={t("common.cancel")}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
           </Space>
         );
       },
-    },
-    {
-      title: t("providers.lastUsed"),
-      dataIndex: "last_used",
-      key: "last_used",
-      render: (text: string) =>
-        text ? new Date(text).toLocaleString() : t("common.never"),
-    },
-    {
-      title: t("common.actions"),
-      key: "actions",
-      render: (_: any, record: Provider) => (
-        <Space size="small">
-          <Button size="small" onClick={() => handleHealthCheck(record.id)}>
-            {t("common.check")}
-          </Button>
-          <Button size="small" onClick={() => handleToggleProvider(record)}>
-            {record.is_disabled ? t("common.enable") : t("common.disable")}
-          </Button>
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => openEditModal(record)}
-          />
-          <Popconfirm
-            title={t("providers.deleteConfirm")}
-            onConfirm={() => handleDeleteProvider(record.id)}
-            okText={t("common.confirm")}
-            cancelText={t("common.cancel")}
-          >
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
     },
   ];
 
@@ -1017,25 +1108,6 @@ export default function ProvidersPage() {
           <Button icon={<ImportOutlined />} onClick={handleImport}>
             {t("providers.import")}
           </Button>
-          {isElectron && (
-            <Button
-              icon={<SearchOutlined />}
-              onClick={handleAutoDetect}
-              type="dashed"
-            >
-              {t("providers.autoDetect")}
-            </Button>
-          )}
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setOauthModalOpen(true)}
-          >
-            {t("providers.addViaOAuth")}
-          </Button>
-          <Button icon={<PlusOutlined />} onClick={openAddModal}>
-            {t("providers.addManually")}
-          </Button>
         </Space>
       </div>
 
@@ -1048,16 +1120,107 @@ export default function ProvidersPage() {
         />
       )}
 
-      <Card>
-        <Table
-          columns={columns}
-          dataSource={providers}
-          rowKey="id"
-          loading={loading}
-          locale={{ emptyText: t("providers.noProviders") }}
-          pagination={{ pageSize: 10 }}
-        />
-      </Card>
+      <Collapse
+        defaultActiveKey={Object.keys(groupedProviders).filter(type => groupedProviders[type].length > 0)}
+        items={Object.entries(groupedProviders).map(([type, typeProviders]) => ({
+          key: type,
+          label: (
+            <Space>
+              <Text strong style={{ fontSize: 14 }}>
+                {getProviderTypeLabel(type)}
+              </Text>
+              <Tag color={typeProviders.length > 0 ? "success" : "default"}>
+                {typeProviders.length} {t("providers.providers")}
+              </Tag>
+            </Space>
+          ),
+          extra: getActionsForProviderType(type),
+          children: (
+            <Table
+              columns={columns}
+              dataSource={typeProviders}
+              rowKey="id"
+              loading={loading}
+              locale={{ emptyText: t("providers.noProviders") }}
+              pagination={{ pageSize: 10 }}
+              bordered
+              expandable={{
+                expandedRowRender: (record: Provider) => {
+                  const used = record.cached_usage_used || 0;
+                  const limit = record.cached_usage_limit || 0;
+                  const percent = record.cached_usage_percent || 0;
+                  const isOverLimit = record.usage_exhausted;
+                  const isRefreshing = refreshingProviders[record.id];
+
+                  return (
+                    <div style={{ padding: '16px 24px', background: '#fafafa' }}>
+                      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                        {/* 使用次数 */}
+                        <div>
+                          <Text strong>{t("providers.usageCount")}: </Text>
+                          <Text>{record.usage_count || 0}</Text>
+                        </div>
+
+                        {/* 最后使用时间 */}
+                        <div>
+                          <Text strong>{t("providers.lastUsed")}: </Text>
+                          <Text>
+                            {record.last_used
+                              ? new Date(record.last_used).toLocaleString()
+                              : t("common.never")}
+                          </Text>
+                        </div>
+
+                        {/* 用量配额 */}
+                        <div>
+                          <div style={{ marginBottom: 8 }}>
+                            <Text strong>{t("providers.usage")}</Text>
+                          </div>
+                          {record.cached_usage_limit ? (
+                            <div style={{ maxWidth: 400 }}>
+                              <Progress
+                                percent={percent}
+                                status={isOverLimit ? "exception" : "active"}
+                                strokeColor={isOverLimit ? "#ff4d4f" : "#1668dc"}
+                              />
+                              <Text
+                                type={isOverLimit ? "danger" : "secondary"}
+                                style={{ fontSize: 12 }}
+                              >
+                                {used} / {limit}
+                              </Text>
+                              {record.last_usage_sync && (
+                                <div style={{ marginTop: 4 }}>
+                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {t("usage.lastSync")}:{" "}
+                                    {new Date(record.last_usage_sync).toLocaleString()}
+                                  </Text>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <Text type="secondary">{t("usage.noData")}</Text>
+                          )}
+                        </div>
+
+                        {/* 错误信息（如果有） */}
+                        {record.error_count > 0 && (
+                          <div>
+                            <Text strong type="danger">
+                              {t("providers.errors")} ({record.error_count}):{" "}
+                            </Text>
+                            <Text type="secondary">{record.last_error_message || "-"}</Text>
+                          </div>
+                        )}
+                      </Space>
+                    </div>
+                  );
+                },
+              }}
+            />
+          ),
+        }))}
+      />
 
       {/* Manual Add/Edit Modal */}
       <Modal
@@ -1075,6 +1238,16 @@ export default function ProvidersPage() {
         <Form form={form} layout="vertical" onFinish={handleSaveProvider}>
           <Form.Item name="name" label={t("common.name")}>
             <Input placeholder="My Kiro Account" />
+          </Form.Item>
+          <Form.Item name="providerType" label={t("providers.providerType")}>
+            <Select>
+              <Select.Option value="kiro">Kiro (AWS CodeWhisperer)</Select.Option>
+              <Select.Option value="openai">OpenAI</Select.Option>
+              <Select.Option value="anthropic">Anthropic</Select.Option>
+              <Select.Option value="azure">Azure OpenAI</Select.Option>
+              <Select.Option value="google">Google AI</Select.Option>
+              <Select.Option value="other">其他</Select.Option>
+            </Select>
           </Form.Item>
           <Form.Item name="region" label={t("providers.region")}>
             <Select>
